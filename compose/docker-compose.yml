@@ -1,4 +1,3 @@
-version: "3.9"
 services:
   dashboard:
     image: nginx:alpine
@@ -6,5 +5,73 @@ services:
     ports:
       - "${DASHBOARD_PORT:-8081}:80"
     volumes:
-      - ../site:/usr/share/nginx/html:ro
+      - /home/pi/rpi-robot-core/site:/usr/share/nginx/html:ro
+    environment:
+      - TZ=${ROBOT_TIMEZONE:-America/Los_Angeles}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
     restart: unless-stopped
+  web-video-server:
+    build:
+      context: /home/pi/rpi-robot-core/services/web_video_server
+      dockerfile: Dockerfile
+    container_name: web-video-server
+    ports:
+      - "${WEB_VIDEO_PORT:-8080}:8080"
+    environment:
+      - TZ=${ROBOT_TIMEZONE:-America/Los_Angeles}
+    depends_on:
+      - dashboard
+    restart: unless-stopped
+    profiles: ["robot"]
+  usb-cam:
+    build:
+      context: /home/pi/rpi-robot-core/services/usb_cam
+      dockerfile: Dockerfile
+    container_name: usb-cam
+    devices:
+      - "${USB_CAM_DEVICE:-/dev/video0}:/dev/video0"
+    environment:
+      - TZ=${ROBOT_TIMEZONE:-America/Los_Angeles}
+    depends_on:
+      - web-video-server
+    restart: unless-stopped
+    profiles: ["robot"]
+  roboclaw-driver:
+    build:
+      context: /home/pi/rpi-robot-core/services/roboclaw_driver
+      dockerfile: Dockerfile
+    container_name: roboclaw-driver
+    devices:
+      - "${ROBOCLAW_SERIAL:-/dev/ttyACM0}:${ROBOCLAW_SERIAL:-/dev/ttyACM0}"
+    environment:
+      - ROBOCLAW_BAUD=${ROBOCLAW_BAUD:-115200}
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-42}
+      - TZ=${ROBOT_TIMEZONE:-America/Los_Angeles}
+    privileged: true   # TODO: replace with udev rule, then remove
+    restart: unless-stopped
+    profiles: ["robot"]
+  dialogue-router:
+    build:
+      context: /home/pi/rpi-robot-core/services/dialogue_router
+      dockerfile: Dockerfile
+    container_name: dialogue-router
+    devices:
+      - "/dev/snd:/dev/snd"
+    group_add:
+      - "audio"
+    environment:
+      - ALSA_CARD=${ALSA_CARD:-3}
+      - ALSA_PCM=${ALSA_PCM:-plughw:3,0}
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-42}
+      - TZ=${ROBOT_TIMEZONE:-America/Los_Angeles}
+    depends_on:
+      - roboclaw-driver
+    restart: unless-stopped
+    profiles: ["robot"]
+networks:
+  default:
+    name: robot-net
