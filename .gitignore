@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+# Node / web
+node_modules/
+dist/
+.build/
+.cache/
+# Editor/OS
+.DS_Store
+.vscode/
+.idea/
+# Docker
+*.log
+**/.env
+docker-data/
+volumes/
+tmp/
+*.pid
+# ROS
+build/
+install/
+log/
+# Artifacts
+*.wav
+*.mp4
+*.png
+*.jpg
+# Secrets
+.env
+*.key
+*.pem

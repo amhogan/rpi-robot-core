@@ -1,0 +1,10 @@
+KEEP:
+- compose/
+- services/
+- site/
+- scripts/
+- config/
+- .env.example
+- README.md
+- MANIFEST.keep
+- .gitignore
