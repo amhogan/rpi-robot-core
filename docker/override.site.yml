@@ -1,0 +1,12 @@
+# docker/override.site.yml
+# Nginx dashboard serving static site from robot-project/site; maps to VIDEO_DASHBOARD_PORT.
+services:
+  video-dashboard:
+    image: nginx:alpine
+    container_name: video-dashboard
+    restart: unless-stopped
+    networks: [ "${ROBOT_NETWORK}" ]
+    ports:
+      - "${VIDEO_DASHBOARD_PORT:-8081}:80"
+    volumes:
+      - ${HOME}/src/robot-project/site:/usr/share/nginx/html:ro
