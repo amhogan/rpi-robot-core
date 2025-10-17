@@ -24,11 +24,13 @@ services:
     image: rhasspy/wyoming-piper:latest
     container_name: wyoming-piper
     restart: unless-stopped
-    networks: [ "robot-net" ]
-    environment:
-      - TZ=${TZ:-America/Los_Angeles}
+    command: >
+      --voice en_US-lessac-medium
+      --uri tcp://0.0.0.0:10200
+      --data-dir /data
+      --download-dir /data/models
     ports:
-      - "${PIPER_PORT:-10200}:10200"
+      - "10200:10200"
     volumes:
       - ${HOME}/robot-data/wyoming-piper:/data
 

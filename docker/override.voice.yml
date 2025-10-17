@@ -6,3 +6,27 @@ services:
   wyoming-whisper:
     environment:
       - TZ=${TZ:-America/Los_Angeles}
+
+  voice_gateway:
+    image: alpine/socat
+    container_name: voice_gateway
+    restart: unless-stopped
+    # map host.docker.internal to the Docker host gateway (Linux)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: >
+      -dd
+      TCP-LISTEN:10200,fork,reuseaddr
+      TCP:host.docker.internal:10200
+
+  stt-forwarder:
+    image: alpine/socat
+    container_name: stt-forwarder
+    restart: unless-stopped
+    # share network namespace with voice_gateway so 127.0.0.1 is common
+    network_mode: "service:voice_gateway"
+    command: >
+      -dd
+      TCP-LISTEN:10300,fork,reuseaddr
+      TCP:host.docker.internal:10300
+
