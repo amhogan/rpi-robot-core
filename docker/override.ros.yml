@@ -1,0 +1,54 @@
+# docker/override.ros.yml
+# Adds ROS 2 Iron core + USB camera + web_video_server.
+# The web video stream will be available on http://<robot-ip>:8080/stream?topic=/image_raw
+
+services:
+  ros-core:
+    image: ros:iron-ros-core
+    container_name: ros-core
+    restart: unless-stopped
+    networks: [ "robot-net" ]
+    environment:
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-42}
+      - RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
+    command: ["bash", "-lc", "echo 'ROS 2 core container ready'; sleep infinity"]
+
+  usb-cam:
+    image: ros:iron
+    container_name: usb-cam
+    restart: unless-stopped
+    networks: [ "robot-net" ]
+    depends_on:
+      - ros-core
+    environment:
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-42}
+      - RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
+    devices:
+      - "/dev/video0:/dev/video0"
+    # Install camera package on first start, then run the node
+    command: >
+      bash -lc "
+        apt-get update &&
+        DEBIAN_FRONTEND=noninteractive apt-get install -y ros-iron-v4l2-camera &&
+        ros2 run v4l2_camera v4l2_camera_node
+      "
+
+  web-video-server:
+    image: ros:iron
+    container_name: web-video-server
+    restart: unless-stopped
+    networks: [ "robot-net" ]
+    depends_on:
+      - ros-core
+    environment:
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-42}
+      - RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
+    ports:
+      - "8080:8080"
+    # Install WVS on first start, then run the server on 0.0.0.0:8080
+    command: >
+      bash -lc "
+        apt-get update &&
+        DEBIAN_FRONTEND=noninteractive apt-get install -y ros-iron-web-video-server &&
+        ros2 run web_video_server web_video_server --port 8080 --address 0.0.0.0
+      "
