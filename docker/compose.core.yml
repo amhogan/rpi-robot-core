@@ -1,11 +1,7 @@
-# docker/compose.core.yml
-# Minimal bring-up: MQTT broker + voice services + shared network.
-# Assumes .env in repo root defines ROBOT_NETWORK, MOSQUITTO_PORT, PIPER_PORT, WHISPER_PORT, VIDEO_DASHBOARD_PORT
-
 name: rpi-robot-core
 
 networks:
-  ${ROBOT_NETWORK}:
+  robot-net:
     driver: bridge
 
 volumes:
@@ -17,7 +13,7 @@ services:
     image: eclipse-mosquitto:2
     container_name: mosquitto
     restart: unless-stopped
-    networks: [ "${ROBOT_NETWORK}" ]
+    networks: [ "robot-net" ]
     ports:
       - "${MOSQUITTO_PORT:-1883}:1883"
     volumes:
@@ -28,7 +24,7 @@ services:
     image: rhasspy/wyoming-piper:latest
     container_name: wyoming-piper
     restart: unless-stopped
-    networks: [ "${ROBOT_NETWORK}" ]
+    networks: [ "robot-net" ]
     environment:
       - TZ=${TZ:-America/Los_Angeles}
     ports:
@@ -40,13 +36,15 @@ services:
     image: rhasspy/wyoming-whisper:latest
     container_name: wyoming-whisper
     restart: unless-stopped
-    networks: [ "${ROBOT_NETWORK}" ]
-    environment:
-      - TZ=${TZ:-America/Los_Angeles}
-      - WHISPER_MODEL=tiny-int8
-      - WHISPER_LANG=en
-      - WHISPER_BEAM_SIZE=1
+    command: >
+      --model tiny.en
+      --device cpu
+      --compute-type int8
+      --uri tcp://0.0.0.0:10300
+      --data-dir /data
+      --download-dir /data/models
     ports:
-      - "${WHISPER_PORT:-10300}:10300"
+      - "10300:10300"
     volumes:
       - ${HOME}/robot-data/wyoming-whisper:/data
+

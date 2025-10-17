@@ -1,7 +1,4 @@
-# docker/override.voice.yml
-# Keep STT/TTS on the robot-net only; do not forward STT from voice_gateway here.
-# When you add voice_gateway, ensure it DOES NOT forward 10300 (per 2025-09-24 note).
-
+# Keep STT/TTS env overrides minimal
 services:
   wyoming-piper:
     environment:
