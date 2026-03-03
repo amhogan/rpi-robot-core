@@ -16,7 +16,7 @@ services:
     restart: unless-stopped
   web-video-server:
     build:
-      context: /home/pi/rpi-robot-core/services/web_video_server
+      context: ./services/web-video-server
       dockerfile: Dockerfile
     container_name: web-video-server
     ports:
