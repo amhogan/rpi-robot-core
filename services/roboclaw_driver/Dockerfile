@@ -10,8 +10,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 COPY . /app
 
-# If there is a requirements.txt, install it; otherwise ensure pyserial is present.
-RUN if [ -f requirements.txt ]; then \
+# Copy repo-level pinned requirements so a repo-root compose build works
+COPY ../requirements-pinned.txt /requirements-pinned.txt
+
+# Install pinned requirements if present; then install service requirements
+# If no service requirements are present, fall back to ensuring `pyserial`.
+RUN if [ -f /requirements-pinned.txt ] && [ -s /requirements-pinned.txt ]; then \
+      pip install --no-cache-dir -r /requirements-pinned.txt ; \
+    fi && \
+    if [ -f requirements.txt ] && [ -s requirements.txt ]; then \
       pip install --no-cache-dir -r requirements.txt ; \
     else \
       pip install --no-cache-dir pyserial ; \
@@ -21,7 +28,7 @@ RUN if [ -f requirements.txt ]; then \
 #  - run run.sh if present
 #  - else run main.py if present
 #  - else sleep with a helpful message
-COPY --link entrypoint.sh /entrypoint.sh
+COPY --link services/roboclaw_driver/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 CMD ["/entrypoint.sh"]

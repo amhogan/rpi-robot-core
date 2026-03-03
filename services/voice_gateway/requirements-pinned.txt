@@ -1,0 +1,11 @@
+# Pinned dependency versions generated from PyPI lookup on 2026-03-03
+# Pin exact versions to reproduce builds. Review and bump as appropriate.
+paho-mqtt==2.1.0
+wyoming==1.8.0
+
+# Notes:
+# - These pins were chosen from the latest stable releases available on PyPI.
+# - If you prefer more conservative pins, use the most-recent versions known-good
+#   for your target environment (e.g. Raspberry Pi OS + Python version).
+# - Add additional service-specific deps to each service's Dockerfile or a
+#   per-service `requirements.txt` if needed.

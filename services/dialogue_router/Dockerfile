@@ -12,14 +12,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 COPY . /app
 
-# Only install when requirements.txt exists AND is non-empty
-RUN if [ -f requirements.txt ] && [ -s requirements.txt ]; then \
+# Copy repo-level pinned requirements so a repo-root compose build works
+COPY ../requirements-pinned.txt /requirements-pinned.txt
+
+# Install pinned requirements if present, then service `requirements.txt` if present
+RUN if [ -f /requirements-pinned.txt ] && [ -s /requirements-pinned.txt ]; then \
+      pip install --no-cache-dir -r /requirements-pinned.txt ; \
+    fi && \
+    if [ -f requirements.txt ] && [ -s requirements.txt ]; then \
       pip install --no-cache-dir -r requirements.txt ; \
     else \
-      echo "No requirements or empty requirements.txt; skipping pip install"; \
+      echo "No requirements.txt or empty; skipping pip install"; \
     fi
 
-COPY --link entrypoint.sh /entrypoint.sh
+COPY --link services/dialogue_router/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 CMD ["/entrypoint.sh"]
