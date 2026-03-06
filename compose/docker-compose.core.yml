@@ -78,13 +78,13 @@ services:
     container_name: camera_server
     restart: unless-stopped
     environment:
-      - CAMERA_DEVICE=/dev/video1      # adjust to the working node if needed
+      - CAMERA_DEVICE=/dev/video0
       - FRAME_WIDTH=640
       - FRAME_HEIGHT=480
       - FRAME_FPS=15
       - JPEG_QUALITY=70
     devices:
-      - "/dev/video1:/dev/video1"      # host:container mapping
+      - "/dev/video0:/dev/video0"
     ports:
       - "8090:8080"
     networks:
