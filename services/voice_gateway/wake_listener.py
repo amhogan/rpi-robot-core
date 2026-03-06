@@ -24,6 +24,7 @@ from contextlib import suppress
 import paho.mqtt.client as mqtt
 from wyoming.client import AsyncClient
 from wyoming.audio import AudioStart, AudioChunk, AudioStop
+from wyoming.wake import Detect
 
 # ---------- env helpers (inline comments allowed like FOO=123 # note) ----------
 def _clean_env(name, default):
@@ -52,6 +53,9 @@ AREC_EXTRA        = env_str("ARECORD_EXTRA", "")      # optional flags
 
 # Where the Wyoming OpenWakeWord server is
 WY_WAKE_URI       = env_str("WY_WAKE_URI", "tcp://127.0.0.1:10400")
+
+# Wake word model name to request (built-ins: okay_nabu, hey_jarvis, hey_mycroft, alexa, hey_rhasspy)
+WAKE_WORD         = env_str("WAKE_WORD", "okay_nabu")
 
 # How long to record after wake (seconds)
 CAPTURE_SECS      = env_int("STT_SECONDS_DEFAULT", 3)
@@ -128,6 +132,7 @@ async def stop_arecord(proc):
 async def stream_and_listen():
     client = AsyncClient.from_uri(WY_WAKE_URI)
     await client.connect()
+    await client.write_event(Detect(names=[WAKE_WORD]).event())
     await client.write_event(AudioStart(rate=RATE, width=SW, channels=CH).event())
 
     proc = await spawn_arecord()
