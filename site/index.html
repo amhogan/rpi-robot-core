@@ -36,7 +36,7 @@
       background: var(--surface);
       border-bottom: 1px solid var(--border);
     }
-    header h1 { font-size: 1rem; color: var(--accent); letter-spacing: 0.06em; }
+    header h1 { font-size: 18pt; color: #fff; letter-spacing: 0.06em; }
     #hostname  { color: var(--muted); }
     #clock     { margin-left: auto; color: var(--muted); }
 
@@ -65,12 +65,32 @@
 
     /* ---- Camera ---- */
     #camera-card { grid-column: 1; grid-row: 1; }
+    #camera-card .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.75rem;
+    }
+    #camera-card .card-header h2 { margin-bottom: 0; }
+    .size-btns { display: flex; gap: 4px; }
+    .size-btns button {
+      font-size: 0.6rem;
+      padding: 2px 7px;
+      background: var(--border);
+      border: 1px solid #3a4555;
+      border-radius: 4px;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .size-btns button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
     #camera-feed {
       width: 100%;
       display: block;
       border-radius: 4px;
       background: #000;
-      min-height: 160px;
+      min-height: 80px;
+      max-height: 320px;
+      object-fit: contain;
     }
 
     /* ---- Drive controls ---- */
@@ -185,7 +205,14 @@
 <main>
   <!-- Camera -->
   <div class="card" id="camera-card">
-    <h2>Camera</h2>
+    <div class="card-header">
+      <h2>Camera</h2>
+      <div class="size-btns">
+        <button data-h="180" onclick="setCamSize(this)">S</button>
+        <button data-h="320" onclick="setCamSize(this)" class="active">M</button>
+        <button data-h="520" onclick="setCamSize(this)">L</button>
+      </div>
+    </div>
     <img id="camera-feed" src="/video_feed" alt="camera feed">
   </div>
 
@@ -406,6 +433,13 @@ document.addEventListener('keydown', e => {
   keysDown.add(e.code);
   startDrive(dir, btnMap[dir]);
 });
+
+// ---- Camera size ----
+function setCamSize(btn) {
+  document.getElementById('camera-feed').style.maxHeight = btn.dataset.h + 'px';
+  document.querySelectorAll('.size-btns button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
 
 document.addEventListener('keyup', e => {
   const dir = keyMap[e.code];
