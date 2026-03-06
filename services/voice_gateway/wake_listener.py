@@ -40,7 +40,7 @@ MQTT_PORT         = env_int("MQTT_PORT", 1883)
 MQTT_CID          = env_str("MQTT_CLIENT_ID", "robot-wake-listener")
 
 TOPIC_WAKE        = f"{BASE}/wake/detected"
-TOPIC_STT_CAPTURE = f"{BASE}/stt/capture"
+TOPIC_STT_CAPTURE = env_str("MQTT_TOPIC_STT_CAPTURE", f"{BASE}/stt/request")
 
 # Mic capture format (keep in sync with OpenWakeWord model expectations)
 RATE              = env_int("AUDIO_RATE", 16000)
@@ -57,7 +57,7 @@ WY_WAKE_URI       = env_str("WY_WAKE_URI", "tcp://127.0.0.1:10400")
 CAPTURE_SECS      = env_int("STT_SECONDS_DEFAULT", 3)
 
 # Beep script (created earlier)
-BEEP_PATH         = env_str("WAKE_BEEP_PATH", "/home/pi/robot-project/services/voice_gateway/sfx_beep.py")
+BEEP_PATH         = env_str("WAKE_BEEP_PATH", "/app/sfx_beep.py")
 APLAY_DEVICE      = env_str("APLAY_DEVICE", "plughw:0,0")  # used by beep
 
 # Chunk ~100 ms @ 16 kHz mono s16le
@@ -178,7 +178,7 @@ async def stream_and_listen():
                 await stop_arecord(proc)
 
                 # Trigger STT (voice gateway will start its own arecord)
-                mqtt_publish(TOPIC_STT_CAPTURE, str(CAPTURE_SECS), qos=0, retain=False)
+                mqtt_publish(TOPIC_STT_CAPTURE, json.dumps({"seconds": CAPTURE_SECS}), qos=0, retain=False)
 
                 # Wait for STT window to finish, then resume streaming to OWW
                 await asyncio.sleep(CAPTURE_SECS + 0.2)
