@@ -28,7 +28,7 @@ services:
     restart: unless-stopped
     # No args needed — handler loads the model requested by the client via Detect event.
     # To add a custom oscar model: mount oscar.tflite and pass --custom-model-dir /custom.
-    command: []
+    command: ["--debug", "--threshold", "0.3"]
     ports:
       - "10400:10400"
     networks:
