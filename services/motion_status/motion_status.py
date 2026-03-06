@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 import os
 import json
+import queue
 import threading
 import time
+from collections import deque
 from datetime import datetime, timezone
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, Response
 from flask_cors import CORS
 import paho.mqtt.client as mqtt
 
@@ -22,21 +24,59 @@ _latest_status = None
 _lock = threading.Lock()
 _mqtt_client = None
 
+# SSE event log
+_log_buffer  = deque(maxlen=200)
+_log_queues  = []
+_log_lock    = threading.Lock()
+
+VOICE_TOPICS = {
+    "robot/stt/text":      "stt",
+    "robot/tts/say":       "tts",
+    "robot/wake/detected": "wake",
+}
+
+
+def _push_log(source: str, text: str):
+    entry = {
+        "ts":     datetime.now(timezone.utc).isoformat(),
+        "source": source,
+        "text":   text,
+    }
+    with _log_lock:
+        _log_buffer.append(entry)
+        for q in _log_queues:
+            q.put(entry)
+
 
 def on_connect(client, userdata, flags, rc, properties=None):
     if rc == 0:
         app.logger.info(f"motion_status: Connected to MQTT {MQTT_HOST}:{MQTT_PORT}")
         client.subscribe(MQTT_TOPIC_STATUS)
-        app.logger.info(f"motion_status: Subscribed to {MQTT_TOPIC_STATUS}")
+        for topic in VOICE_TOPICS:
+            client.subscribe(topic)
+        app.logger.info(f"motion_status: Subscribed to telemetry + voice topics")
     else:
         app.logger.error(f"motion_status: MQTT connect failed with code {rc}")
 
 
 def on_message(client, userdata, msg):
     global _latest_status
+    raw = msg.payload.decode("utf-8")
+
+    # Voice / wake topics → SSE log
+    if msg.topic in VOICE_TOPICS:
+        source = VOICE_TOPICS[msg.topic]
+        # Payload may be plain text or JSON with a "text" field
+        try:
+            text = json.loads(raw).get("text", raw)
+        except Exception:
+            text = raw
+        _push_log(source, text)
+        return
+
+    # Motion telemetry
     try:
-        payload = msg.payload.decode("utf-8")
-        data = json.loads(payload)
+        data = json.loads(raw)
     except Exception as e:
         app.logger.warning(f"motion_status: Bad payload on {msg.topic}: {e}")
         return
@@ -113,6 +153,38 @@ def command():
     })
     client.publish(MQTT_TOPIC_CMD, payload, qos=0)
     return jsonify({"ok": True, "command": json.loads(payload)}), 200
+
+
+@app.route("/events")
+def events():
+    def stream():
+        q = queue.Queue()
+        with _log_lock:
+            _log_queues.append(q)
+            history = list(_log_buffer)
+        try:
+            # Send buffered history on connect
+            for entry in history:
+                yield f"data: {json.dumps(entry)}\n\n"
+            # Stream live events; send a comment heartbeat every 25s
+            while True:
+                try:
+                    entry = q.get(timeout=25)
+                    yield f"data: {json.dumps(entry)}\n\n"
+                except queue.Empty:
+                    yield ": heartbeat\n\n"
+        finally:
+            with _log_lock:
+                try:
+                    _log_queues.remove(q)
+                except ValueError:
+                    pass
+
+    return Response(
+        stream(),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 def main():

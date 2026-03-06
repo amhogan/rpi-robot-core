@@ -188,10 +188,63 @@
 
     #last-updated { color: var(--muted); font-size: 0.6rem; margin-top: 0.625rem; }
 
+    /* ---- Log panel ---- */
+    #log-card {
+      grid-column: 1 / -1;
+      grid-row: 3;
+    }
+    #log-card .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.5rem;
+    }
+    #log-card .card-header h2 { margin-bottom: 0; }
+    #log-clear {
+      font-size: 0.6rem;
+      padding: 2px 8px;
+      background: var(--border);
+      border: 1px solid #3a4555;
+      border-radius: 4px;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    #log-entries {
+      height: 160px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      font-size: 0.72rem;
+      scroll-behavior: smooth;
+    }
+    .log-entry {
+      display: flex;
+      gap: 0.6rem;
+      padding: 2px 0;
+      border-bottom: 1px solid var(--border);
+      align-items: baseline;
+    }
+    .log-entry:last-child { border-bottom: none; }
+    .log-ts    { color: var(--muted); white-space: nowrap; flex-shrink: 0; }
+    .log-badge {
+      font-size: 0.6rem;
+      padding: 1px 6px;
+      border-radius: 8px;
+      flex-shrink: 0;
+      font-weight: bold;
+    }
+    .log-stt  { background: #1a2e4a; color: #6ab4ff; border: 1px solid #2a4a6a; }
+    .log-tts  { background: #1a3a1a; color: var(--green); border: 1px solid #2a5a2a; }
+    .log-wake { background: #2a2a1a; color: var(--yellow); border: 1px solid #4a4a1a; }
+    .log-sys  { background: #2a1a2a; color: #c084fc; border: 1px solid #4a2a4a; }
+    .log-text { color: var(--text); word-break: break-word; }
+    #log-status { color: var(--muted); font-size: 0.6rem; }
+
     /* ---- Responsive ---- */
     @media (max-width: 680px) {
       main { grid-template-columns: 1fr; }
-      #camera-card, #drive-card, #status-card, #motion-card { grid-column: 1; grid-row: auto; }
+      #camera-card, #drive-card, #status-card, #motion-card, #log-card { grid-column: 1; grid-row: auto; }
     }
   </style>
 </head>
@@ -263,6 +316,15 @@
     <div class="stat-row"><span class="stat-label">M2 Temp</span>  <span class="stat-value" id="m-m2t">—</span></div>
     <div class="stat-row"><span class="stat-label">Age</span>      <span class="stat-value" id="m-age">—</span></div>
     <div class="stat-row"><span class="stat-label">Controller</span><span class="stat-value" id="m-status">—</span></div>
+  </div>
+  <!-- Conversation / event log -->
+  <div class="card" id="log-card">
+    <div class="card-header">
+      <h2>Log</h2>
+      <span id="log-status">connecting…</span>
+      <button id="log-clear" onclick="clearLog()">Clear</button>
+    </div>
+    <div id="log-entries"></div>
   </div>
 </main>
 
@@ -475,6 +537,56 @@ function setCamSize(btn) {
   document.querySelectorAll('.size-btns button').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
 }
+
+// ---- Conversation / event log (SSE) ----
+const logEntries  = document.getElementById('log-entries');
+const logStatus   = document.getElementById('log-status');
+const BADGE_LABEL = { stt: 'HEARD', tts: 'SAID', wake: 'WAKE', sys: 'SYS' };
+let autoScroll = true;
+
+logEntries.addEventListener('scroll', () => {
+  const el = logEntries;
+  autoScroll = el.scrollTop + el.clientHeight >= el.scrollHeight - 8;
+});
+
+function appendLogEntry(entry) {
+  const source = entry.source || 'sys';
+  const label  = BADGE_LABEL[source] || source.toUpperCase();
+  const ts     = new Date(entry.ts).toLocaleTimeString();
+
+  const row = document.createElement('div');
+  row.className = 'log-entry';
+  row.innerHTML =
+    `<span class="log-ts">${ts}</span>` +
+    `<span class="log-badge log-${source}">${label}</span>` +
+    `<span class="log-text">${entry.text}</span>`;
+  logEntries.appendChild(row);
+
+  // Cap DOM at 300 entries
+  while (logEntries.children.length > 300) logEntries.removeChild(logEntries.firstChild);
+  if (autoScroll) logEntries.scrollTop = logEntries.scrollHeight;
+}
+
+function clearLog() {
+  logEntries.innerHTML = '';
+}
+
+(function connectSSE() {
+  const es = new EventSource('/events');
+
+  es.onopen = () => { logStatus.textContent = 'live'; logStatus.style.color = 'var(--green)'; };
+
+  es.onmessage = e => {
+    try { appendLogEntry(JSON.parse(e.data)); } catch (_) {}
+  };
+
+  es.onerror = () => {
+    logStatus.textContent = 'reconnecting…';
+    logStatus.style.color = 'var(--yellow)';
+    es.close();
+    setTimeout(connectSSE, 3000);
+  };
+})();
 
 document.addEventListener('keyup', e => {
   const dir = keyMap[e.code];
