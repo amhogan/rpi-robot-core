@@ -1,2 +1,423 @@
 <!doctype html>
-<html><body><h1>RPi-Robot Dashboard</h1><p>Dashboard is running.</p></body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RPi-Robot</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #0e1117;
+      --surface: #1a1f2e;
+      --border:  #2a3040;
+      --accent:  #4a9eff;
+      --green:   #3ddc84;
+      --yellow:  #ffc947;
+      --red:     #ff5252;
+      --text:    #e2e8f0;
+      --muted:   #7a8499;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'SF Mono', 'Fira Code', ui-monospace, monospace;
+      font-size: 13px;
+      min-height: 100vh;
+    }
+
+    /* ---- Header ---- */
+    header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 0.6rem 1.25rem;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+    header h1 { font-size: 1rem; color: var(--accent); letter-spacing: 0.06em; }
+    #hostname  { color: var(--muted); }
+    #clock     { margin-left: auto; color: var(--muted); }
+
+    /* ---- Layout ---- */
+    main {
+      display: grid;
+      grid-template-columns: 1fr 300px;
+      grid-template-rows: auto auto;
+      gap: 0.875rem;
+      padding: 0.875rem;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.875rem;
+    }
+    .card h2 {
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+    }
+
+    /* ---- Camera ---- */
+    #camera-card { grid-column: 1; grid-row: 1; }
+    #camera-feed {
+      width: 100%;
+      display: block;
+      border-radius: 4px;
+      background: #000;
+      min-height: 160px;
+    }
+
+    /* ---- Drive controls ---- */
+    #drive-card { grid-column: 1; grid-row: 2; }
+
+    .drive-layout {
+      display: flex;
+      align-items: center;
+      gap: 2rem;
+    }
+
+    .dpad {
+      display: grid;
+      grid-template-areas:
+        ".    fwd   ."
+        "left stop  right"
+        ".    back  .";
+      gap: 6px;
+    }
+    .dpad button {
+      width: 52px;
+      height: 52px;
+      font-size: 1.25rem;
+      background: var(--border);
+      border: 1px solid #3a4555;
+      border-radius: 6px;
+      color: var(--text);
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.08s, transform 0.08s;
+    }
+    .dpad button:active,
+    .dpad button.active { background: var(--accent); color: #fff; transform: scale(0.93); }
+    #btn-fwd   { grid-area: fwd; }
+    #btn-left  { grid-area: left; }
+    #btn-stop  { grid-area: stop; background: #1e1212; border-color: var(--red); color: var(--red); }
+    #btn-stop:active, #btn-stop.active { background: var(--red); color: #fff; transform: scale(0.93); }
+    #btn-right { grid-area: right; }
+    #btn-back  { grid-area: back; }
+
+    .speed-ctl {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .speed-ctl label { color: var(--muted); font-size: 0.65rem; text-transform: uppercase; }
+    .speed-ctl span  { color: var(--accent); font-size: 1.1rem; font-weight: bold; }
+
+    input[type=range][orient=vertical],
+    input[type=range].vertical {
+      -webkit-appearance: slider-vertical;
+      appearance: slider-vertical;
+      writing-mode: vertical-lr;
+      direction: rtl;
+      width: 28px;
+      height: 110px;
+      cursor: pointer;
+      accent-color: var(--accent);
+    }
+
+    .kbd-hint { color: var(--muted); font-size: 0.65rem; margin-top: 0.875rem; }
+
+    /* ---- Status panels ---- */
+    #status-card { grid-column: 2; grid-row: 1; }
+    #motion-card { grid-column: 2; grid-row: 2; }
+
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      padding: 0.3rem 0;
+      border-bottom: 1px solid var(--border);
+      gap: 0.5rem;
+    }
+    .stat-row:last-child { border-bottom: none; }
+    .stat-label { color: var(--muted); white-space: nowrap; }
+    .stat-value { color: var(--text); text-align: right; word-break: break-all; }
+
+    .chips {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      margin-top: 0.625rem;
+    }
+    .chip {
+      font-size: 0.65rem;
+      padding: 2px 8px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .chip-ok  { border-color: var(--green);  color: var(--green); }
+    .chip-err { border-color: var(--red);    color: var(--red); }
+
+    #last-updated { color: var(--muted); font-size: 0.6rem; margin-top: 0.625rem; }
+
+    /* ---- Responsive ---- */
+    @media (max-width: 680px) {
+      main { grid-template-columns: 1fr; }
+      #camera-card, #drive-card, #status-card, #motion-card { grid-column: 1; grid-row: auto; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>RPi-Robot</h1>
+  <span id="hostname">—</span>
+  <span id="clock">—</span>
+</header>
+
+<main>
+  <!-- Camera -->
+  <div class="card" id="camera-card">
+    <h2>Camera</h2>
+    <img id="camera-feed" src="/video_feed" alt="camera feed">
+  </div>
+
+  <!-- Drive controls -->
+  <div class="card" id="drive-card">
+    <h2>Drive</h2>
+    <div class="drive-layout">
+      <div class="dpad">
+        <button id="btn-fwd"   data-dir="forward">&#9650;</button>
+        <button id="btn-left"  data-dir="left">&#9664;</button>
+        <button id="btn-stop"  data-dir="stop">&#9632;</button>
+        <button id="btn-right" data-dir="right">&#9654;</button>
+        <button id="btn-back"  data-dir="backward">&#9660;</button>
+      </div>
+      <div class="speed-ctl">
+        <label>Speed</label>
+        <input type="range" id="speed-slider" class="vertical" orient="vertical"
+               min="10" max="100" value="60">
+        <span id="speed-val">60%</span>
+      </div>
+    </div>
+    <div class="kbd-hint">W A S D &nbsp;or&nbsp; &#8593; &#8592; &#8595; &#8594; &nbsp;&middot;&nbsp; Space to stop</div>
+  </div>
+
+  <!-- System status -->
+  <div class="card" id="status-card">
+    <h2>System</h2>
+    <div class="stat-row"><span class="stat-label">Hostname</span><span class="stat-value" id="s-host">—</span></div>
+    <div class="stat-row"><span class="stat-label">CPU Temp</span><span class="stat-value" id="s-temp">—</span></div>
+    <div class="stat-row"><span class="stat-label">Load (1m)</span><span class="stat-value" id="s-load">—</span></div>
+    <div class="stat-row"><span class="stat-label">Uptime</span>  <span class="stat-value" id="s-uptime">—</span></div>
+    <div class="stat-row"><span class="stat-label">Disk</span>    <span class="stat-value" id="s-disk">—</span></div>
+    <div class="chips">
+      <span class="chip" id="chip-mqtt">MQTT</span>
+      <span class="chip" id="chip-tts">TTS</span>
+      <span class="chip" id="chip-stt">STT</span>
+    </div>
+    <div id="last-updated">—</div>
+  </div>
+
+  <!-- Motion status -->
+  <div class="card" id="motion-card">
+    <h2>Motion</h2>
+    <div class="stat-row"><span class="stat-label">Status</span>   <span class="stat-value" id="m-status">—</span></div>
+    <div class="stat-row"><span class="stat-label">Direction</span><span class="stat-value" id="m-dir">—</span></div>
+    <div class="stat-row"><span class="stat-label">Speed</span>    <span class="stat-value" id="m-speed">—</span></div>
+    <div class="stat-row"><span class="stat-label">Age</span>      <span class="stat-value" id="m-age">—</span></div>
+  </div>
+</main>
+
+<script>
+// ---- Clock ----
+function updateClock() {
+  document.getElementById('clock').textContent = new Date().toLocaleTimeString();
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ---- Helpers ----
+function fmtUptime(secs) {
+  if (secs == null) return '—';
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  return h + 'h ' + m + 'm';
+}
+
+function fmtBytes(b) {
+  if (b == null) return '—';
+  return (b / (1024 ** 3)).toFixed(1) + ' GB';
+}
+
+// ---- System status polling ----
+async function pollStatus() {
+  try {
+    const r = await fetch('/status');
+    if (!r.ok) return;
+    const d = await r.json();
+
+    document.getElementById('hostname').textContent = d.hostname || '—';
+    document.getElementById('s-host').textContent   = d.hostname || '—';
+
+    const temp = d.cpu_temp_c;
+    const tempEl = document.getElementById('s-temp');
+    tempEl.textContent = temp != null ? temp + '°C' : '—';
+    tempEl.style.color = temp > 75 ? 'var(--red)' : temp > 60 ? 'var(--yellow)' : 'var(--green)';
+
+    document.getElementById('s-load').textContent   = d.loadavg_1m != null ? d.loadavg_1m.toFixed(2) : '—';
+    document.getElementById('s-uptime').textContent = fmtUptime(d.uptime_seconds);
+
+    const disk = d.disk_root;
+    if (disk) {
+      const pct = disk.used_percent;
+      const diskEl = document.getElementById('s-disk');
+      diskEl.textContent = fmtBytes(disk.used_bytes) + ' / ' + fmtBytes(disk.total_bytes) + ' (' + pct + '%)';
+      diskEl.style.color = pct > 90 ? 'var(--red)' : pct > 75 ? 'var(--yellow)' : '';
+    }
+
+    const v = d.voice || {};
+    function setChip(id, ok) {
+      const el = document.getElementById(id);
+      el.className = 'chip ' + (ok ? 'chip-ok' : 'chip-err');
+    }
+    setChip('chip-mqtt', v.mqtt_ok);
+    setChip('chip-tts',  v.tts_ok);
+    setChip('chip-stt',  v.stt_ok);
+
+    document.getElementById('last-updated').textContent =
+      'Updated ' + new Date().toLocaleTimeString();
+  } catch (e) {}
+}
+pollStatus();
+setInterval(pollStatus, 5000);
+
+// ---- Motion status polling ----
+async function pollMotion() {
+  try {
+    const r = await fetch('/status_motion');
+    const d = await r.json();
+    if (!d.available) {
+      document.getElementById('m-status').textContent = 'no data';
+      return;
+    }
+    document.getElementById('m-status').textContent = d.status    || '—';
+    document.getElementById('m-dir').textContent    = d.direction || '—';
+    document.getElementById('m-speed').textContent  =
+      d.speed != null ? Math.round(d.speed * 100) + '%' : '—';
+    document.getElementById('m-age').textContent    =
+      d.age_sec != null ? d.age_sec.toFixed(1) + 's ago' : '—';
+  } catch (e) {}
+}
+pollMotion();
+setInterval(pollMotion, 2000);
+
+// ---- Drive controls ----
+const speedSlider = document.getElementById('speed-slider');
+const speedVal    = document.getElementById('speed-val');
+speedSlider.addEventListener('input', () => {
+  speedVal.textContent = speedSlider.value + '%';
+});
+
+let driveInterval = null;
+let activeDir = null;
+let activeBtn = null;
+
+async function sendCommand(direction) {
+  const speed = parseInt(speedSlider.value) / 100;
+  try {
+    await fetch('/command', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        intent:    direction === 'stop' ? 'stop' : 'move',
+        direction: direction,
+        speed:     direction === 'stop' ? 0.0 : speed,
+        duration:  0.4
+      })
+    });
+  } catch (e) {}
+}
+
+function startDrive(dir, btn) {
+  if (activeDir === dir) return;
+  stopDrive();
+  activeDir = dir;
+  activeBtn = btn;
+  if (btn) btn.classList.add('active');
+  sendCommand(dir);
+  if (dir !== 'stop') {
+    driveInterval = setInterval(() => sendCommand(dir), 300);
+  }
+}
+
+function stopDrive() {
+  if (driveInterval) { clearInterval(driveInterval); driveInterval = null; }
+  if (activeBtn) activeBtn.classList.remove('active');
+  activeDir = null;
+  activeBtn = null;
+}
+
+// D-pad pointer events
+document.querySelectorAll('.dpad button').forEach(btn => {
+  const dir = btn.dataset.dir;
+
+  btn.addEventListener('mousedown',  e => { e.preventDefault(); startDrive(dir, btn); });
+  btn.addEventListener('touchstart', e => { e.preventDefault(); startDrive(dir, btn); }, { passive: false });
+
+  if (dir !== 'stop') {
+    btn.addEventListener('mouseup',    () => { stopDrive(); sendCommand('stop'); });
+    btn.addEventListener('mouseleave', () => { if (activeDir === dir) { stopDrive(); sendCommand('stop'); } });
+    btn.addEventListener('touchend',   () => { stopDrive(); sendCommand('stop'); });
+  }
+});
+
+document.addEventListener('mouseup', () => {
+  if (activeDir && activeDir !== 'stop') { stopDrive(); sendCommand('stop'); }
+});
+
+// Keyboard
+const keyMap = {
+  ArrowUp:    'forward',  KeyW: 'forward',
+  ArrowLeft:  'left',     KeyA: 'left',
+  ArrowDown:  'backward', KeyS: 'backward',
+  ArrowRight: 'right',    KeyD: 'right',
+  Space:      'stop',     KeyX: 'stop',
+};
+const btnMap = {
+  forward:  document.getElementById('btn-fwd'),
+  left:     document.getElementById('btn-left'),
+  backward: document.getElementById('btn-back'),
+  right:    document.getElementById('btn-right'),
+  stop:     document.getElementById('btn-stop'),
+};
+const keysDown = new Set();
+
+document.addEventListener('keydown', e => {
+  const dir = keyMap[e.code];
+  if (!dir || keysDown.has(e.code)) return;
+  e.preventDefault();
+  keysDown.add(e.code);
+  startDrive(dir, btnMap[dir]);
+});
+
+document.addEventListener('keyup', e => {
+  const dir = keyMap[e.code];
+  if (!dir) return;
+  keysDown.delete(e.code);
+  if (activeDir === dir) {
+    stopDrive();
+    if (dir !== 'stop') sendCommand('stop');
+  }
+});
+</script>
+</body>
+</html>

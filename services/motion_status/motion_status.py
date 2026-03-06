@@ -5,7 +5,7 @@ import threading
 import time
 from datetime import datetime, timezone
 
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 import paho.mqtt.client as mqtt
 
@@ -13,12 +13,14 @@ import paho.mqtt.client as mqtt
 MQTT_HOST = os.getenv("MQTT_HOST", "mosquitto")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 MQTT_TOPIC_STATUS = os.getenv("MQTT_TOPIC_STATUS", "robot/motion/status")
+MQTT_TOPIC_CMD    = os.getenv("MQTT_TOPIC_CMD", "robot/voice/command")
 
 app = Flask(__name__)
 CORS(app)
 
 _latest_status = None
 _lock = threading.Lock()
+_mqtt_client = None
 
 
 def on_connect(client, userdata, flags, rc, properties=None):
@@ -44,6 +46,7 @@ def on_message(client, userdata, msg):
 
 
 def mqtt_loop():
+    global _mqtt_client
     client = mqtt.Client(
         client_id="motion_status",
         protocol=mqtt.MQTTv5,
@@ -61,6 +64,7 @@ def mqtt_loop():
             app.logger.error(f"motion_status: MQTT connect failed: {e!r} — retrying in 5 seconds")
             time.sleep(5)
 
+    _mqtt_client = client
     client.loop_forever()
 
 
@@ -87,6 +91,28 @@ def status_motion():
     data["age_sec"] = age_sec
     data["available"] = True
     return jsonify(data), 200
+
+
+@app.route("/command", methods=["POST"])
+def command():
+    data = request.get_json(force=True, silent=True) or {}
+    direction = str(data.get("direction", "stop")).lower()
+    intent    = str(data.get("intent",    "stop")).lower()
+    speed     = max(0.0, min(1.0, float(data.get("speed",    0.0))))
+    duration  = max(0.0, min(10.0, float(data.get("duration", 0.4))))
+
+    with _lock:
+        client = _mqtt_client
+
+    if client is None:
+        return jsonify({"ok": False, "error": "mqtt not connected"}), 503
+
+    payload = json.dumps({
+        "intent": intent, "direction": direction,
+        "speed": speed, "duration": duration,
+    })
+    client.publish(MQTT_TOPIC_CMD, payload, qos=0)
+    return jsonify({"ok": True, "command": json.loads(payload)}), 200
 
 
 def main():
