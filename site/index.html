@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>RPi-Robot</title>
+  <title>O.S.C.A.R.</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -178,8 +178,7 @@
 <body>
 
 <header>
-  <h1>RPi-Robot</h1>
-  <span id="hostname">—</span>
+  <h1>O.S.C.A.R.</h1>
   <span id="clock">—</span>
 </header>
 
@@ -265,8 +264,7 @@ async function pollStatus() {
     if (!r.ok) return;
     const d = await r.json();
 
-    document.getElementById('hostname').textContent = d.hostname || '—';
-    document.getElementById('s-host').textContent   = d.hostname || '—';
+    document.getElementById('s-host').textContent = d.hostname || '—';
 
     const temp = d.cpu_temp_c;
     const tempEl = document.getElementById('s-temp');
