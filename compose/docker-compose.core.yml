@@ -92,6 +92,21 @@ services:
     networks:
       - robot-core
 
+  dialogue_router:
+    build:
+      context: ../services/dialogue_router
+    container_name: dialogue_router
+    restart: unless-stopped
+    environment:
+      - MQTT_HOST=mosquitto
+      - MQTT_PORT=1883
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - CLAUDE_MODEL=claude-opus-4-6
+    depends_on:
+      - mosquitto
+    networks:
+      - robot-core
+
 volumes:
   mosquitto_data:
 
