@@ -1,0 +1,53 @@
+version: "3.9"
+
+services:
+  wyoming-piper:
+    image: rhasspy/wyoming-piper:latest
+    restart: unless-stopped
+    command: ["--voice", "en_US-lessac-medium"]
+    ports:
+      - "10200:10200"
+    networks:
+      - robot-core
+    volumes:
+      - wyoming_piper_data:/data
+
+  wyoming-whisper:
+    image: rhasspy/wyoming-whisper:latest
+    restart: unless-stopped
+    command: ["--model", "tiny-int8", "--language", "en"]
+    ports:
+      - "10300:10300"
+    networks:
+      - robot-core
+    volumes:
+      - wyoming_whisper_data:/data
+
+  voice_gateway:
+    build:
+      context: ../services/voice_gateway
+    container_name: voice_gateway
+    restart: unless-stopped
+    environment:
+      - MQTT_HOST=mosquitto
+      - MQTT_PORT=1883
+      - PIPER_HOST=wyoming-piper
+      - PIPER_PORT=10200
+      - WHISPER_HOST=wyoming-whisper
+      - WHISPER_PORT=10300
+      - APLAY_DEVICE=plughw:USB,0
+      - ARECORD_DEVICE=plughw:USB,0
+      - STT_DEFAULT_SECONDS=5
+    networks:
+      - robot-core
+    devices:
+      - /dev/snd:/dev/snd
+
+networks:
+  robot-core:
+    external: true
+    name: compose_robot-core
+
+volumes:
+  wyoming_piper_data:
+  wyoming_whisper_data:

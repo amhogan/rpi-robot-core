@@ -1,0 +1,15 @@
+[Unit]
+Description=RPi-Robot Voice Stack (Piper TTS, Whisper STT)
+Requires=docker.service
+After=docker.service rpi-robot-core.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/pi/rpi-robot-core
+ExecStart=/usr/bin/docker compose -f compose/docker-compose.voice.yml up -d
+ExecStop=/usr/bin/docker compose -f compose/docker-compose.voice.yml down
+RemainAfterExit=yes
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target

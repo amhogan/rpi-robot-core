@@ -1,0 +1,31 @@
+{
+  "name": "rpi-robot-core (RPi Dev, Python only)",
+
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+
+  "workspaceFolder": "/workspace",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
+
+  "postCreateCommand": "if [ -f requirements.txt ]; then pip install -r requirements.txt; fi",
+
+  "remoteUser": "vscode",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-azuretools.vscode-docker",
+        "github.copilot",
+        "ms-vscode.remote-explorer",
+        "ms-vscode.remote-server"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.analysis.typeCheckingMode": "basic",
+        "python.formatting.provider": "black",
+        "editor.formatOnSave": true
+      }
+    }
+  }
+}

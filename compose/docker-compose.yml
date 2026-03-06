@@ -29,7 +29,7 @@ services:
     profiles: ["robot"]
   usb-cam:
     build:
-      context: /home/pi/rpi-robot-core/services/usb_cam
+      context: ../services/usb_cam
       dockerfile: Dockerfile
     container_name: usb-cam
     devices:
@@ -42,7 +42,7 @@ services:
     profiles: ["robot"]
   roboclaw-driver:
     build:
-      context: /home/pi/rpi-robot-core/services/roboclaw_driver
+      context: ../services/roboclaw_driver
       dockerfile: Dockerfile
     container_name: roboclaw-driver
     devices:
@@ -56,7 +56,7 @@ services:
     profiles: ["robot"]
   dialogue-router:
     build:
-      context: /home/pi/rpi-robot-core/services/dialogue_router
+      context: ../services/dialogue_router
       dockerfile: Dockerfile
     container_name: dialogue-router
     devices:
