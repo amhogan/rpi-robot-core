@@ -24,7 +24,7 @@ from contextlib import suppress
 import paho.mqtt.client as mqtt
 from wyoming.client import AsyncClient
 from wyoming.audio import AudioStart, AudioChunk, AudioStop
-from wyoming.wake import Detect
+from wyoming.wake import Detect, Detection
 
 # ---------- env helpers (inline comments allowed like FOO=123 # note) ----------
 def _clean_env(name, default):
@@ -158,7 +158,7 @@ async def stream_and_listen():
             et = getattr(evt, "type", None)
             data = getattr(evt, "data", {}) or {}
 
-            if et == "wake":
+            if Detection.is_type(evt) or et == "wake":
                 now = time.time()
                 if now - last_wake_ts < WAKE_COOLDOWN:
                     continue
