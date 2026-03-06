@@ -262,6 +262,7 @@
     <div class="stat-row"><span class="stat-label">M1 Temp</span>  <span class="stat-value" id="m-m1t">—</span></div>
     <div class="stat-row"><span class="stat-label">M2 Temp</span>  <span class="stat-value" id="m-m2t">—</span></div>
     <div class="stat-row"><span class="stat-label">Age</span>      <span class="stat-value" id="m-age">—</span></div>
+    <div class="stat-row"><span class="stat-label">Controller</span><span class="stat-value" id="m-status">—</span></div>
   </div>
 </main>
 
@@ -356,6 +357,24 @@ async function pollMotion() {
     document.getElementById('m-m2t').textContent = fmtC(d.m2_temp_c);
     document.getElementById('m-age').textContent =
       d.age_sec != null ? d.age_sec.toFixed(1) + 's ago' : '—';
+
+    const CRIT_BITS = { 0x01: 'E-Stop', 0x02: 'Over Temp', 0x08: 'Batt High', 0x20: 'Logic Low' };
+    const statusEl = document.getElementById('m-status');
+    if (d.error_bits == null) {
+      statusEl.textContent = '—';
+      statusEl.style.color = '';
+    } else {
+      const errors = Object.entries(CRIT_BITS)
+        .filter(([mask]) => d.error_bits & Number(mask))
+        .map(([, name]) => name);
+      if (errors.length === 0) {
+        statusEl.textContent = 'OK';
+        statusEl.style.color = 'var(--green)';
+      } else {
+        statusEl.textContent = errors.join(', ');
+        statusEl.style.color = 'var(--red)';
+      }
+    }
   } catch (e) {}
 }
 pollMotion();
