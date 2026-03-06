@@ -9,6 +9,7 @@ import shutil
 
 HOST = os.getenv("NETSTATUS_HOST", "0.0.0.0")
 PORT = int(os.getenv("NETSTATUS_PORT", "8081"))
+ROBOT_NAME = os.getenv("ROBOT_NAME", None)
 
 
 def get_cpu_temp_c():
@@ -96,7 +97,7 @@ def get_voice_status():
 def build_status():
     load1, load5, load15 = get_load_averages()
     return {
-        "hostname": socket.gethostname(),
+        "hostname": ROBOT_NAME or socket.gethostname(),
         "time": int(time.time()),
         "cpu_temp_c": get_cpu_temp_c(),
         "uptime_seconds": get_uptime_seconds(),

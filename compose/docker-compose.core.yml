@@ -21,6 +21,7 @@ services:
     environment:
       NETSTATUS_HOST: "0.0.0.0"
       NETSTATUS_PORT: "8081"
+      ROBOT_NAME: "O.S.C.A.R."
     command: ["python", "main.py"]
     networks:
       - robot-core
