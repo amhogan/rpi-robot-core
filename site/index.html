@@ -256,9 +256,11 @@
   <!-- Motion status -->
   <div class="card" id="motion-card">
     <h2>Motion</h2>
-    <div class="stat-row"><span class="stat-label">Status</span>   <span class="stat-value" id="m-status">—</span></div>
-    <div class="stat-row"><span class="stat-label">Direction</span><span class="stat-value" id="m-dir">—</span></div>
-    <div class="stat-row"><span class="stat-label">Speed</span>    <span class="stat-value" id="m-speed">—</span></div>
+    <div class="stat-row"><span class="stat-label">Battery</span>  <span class="stat-value" id="m-batt">—</span></div>
+    <div class="stat-row"><span class="stat-label">M1 Current</span><span class="stat-value" id="m-m1i">—</span></div>
+    <div class="stat-row"><span class="stat-label">M2 Current</span><span class="stat-value" id="m-m2i">—</span></div>
+    <div class="stat-row"><span class="stat-label">M1 Temp</span>  <span class="stat-value" id="m-m1t">—</span></div>
+    <div class="stat-row"><span class="stat-label">M2 Temp</span>  <span class="stat-value" id="m-m2t">—</span></div>
     <div class="stat-row"><span class="stat-label">Age</span>      <span class="stat-value" id="m-age">—</span></div>
   </div>
 </main>
@@ -330,15 +332,29 @@ async function pollMotion() {
   try {
     const r = await fetch('/status_motion');
     const d = await r.json();
+
+    function fmtV(v)   { return v != null ? v.toFixed(1) + ' V' : '—'; }
+    function fmtA(a)   { return a != null ? a.toFixed(2) + ' A' : '—'; }
+    function fmtC(c)   { return c != null ? c.toFixed(1) + '°C' : '—'; }
+
     if (!d.available) {
-      document.getElementById('m-status').textContent = 'no data';
+      ['m-batt','m-m1i','m-m2i','m-m1t','m-m2t','m-age'].forEach(
+        id => document.getElementById(id).textContent = 'no data'
+      );
       return;
     }
-    document.getElementById('m-status').textContent = d.status    || '—';
-    document.getElementById('m-dir').textContent    = d.direction || '—';
-    document.getElementById('m-speed').textContent  =
-      d.speed != null ? Math.round(d.speed * 100) + '%' : '—';
-    document.getElementById('m-age').textContent    =
+
+    const battEl = document.getElementById('m-batt');
+    battEl.textContent = fmtV(d.main_battery_v);
+    battEl.style.color = d.main_battery_v != null && d.main_battery_v < 22
+      ? 'var(--red)' : d.main_battery_v != null && d.main_battery_v < 24
+      ? 'var(--yellow)' : '';
+
+    document.getElementById('m-m1i').textContent = fmtA(d.m1_current_a);
+    document.getElementById('m-m2i').textContent = fmtA(d.m2_current_a);
+    document.getElementById('m-m1t').textContent = fmtC(d.m1_temp_c);
+    document.getElementById('m-m2t').textContent = fmtC(d.m2_temp_c);
+    document.getElementById('m-age').textContent =
       d.age_sec != null ? d.age_sec.toFixed(1) + 's ago' : '—';
   } catch (e) {}
 }
