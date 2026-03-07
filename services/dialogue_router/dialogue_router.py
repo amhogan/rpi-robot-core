@@ -63,7 +63,7 @@ def route(text: str) -> None:
     except Exception as e:
         logging.error(f"Claude API error: {e}")
         if _mqtt_client:
-            _mqtt_client.publish(TOPIC_TTS, "Sorry, I had a problem processing that.")
+            _mqtt_client.publish(TOPIC_TTS, json.dumps({"text": "Sorry, I had a problem processing that."}))
         return
 
     say    = (data.get("say") or "").strip()
@@ -71,7 +71,7 @@ def route(text: str) -> None:
 
     if say:
         logging.info(f"TTS → {say!r}")
-        _mqtt_client.publish(TOPIC_TTS, say)
+        _mqtt_client.publish(TOPIC_TTS, json.dumps({"text": say}))
 
     if isinstance(motion, dict):
         direction = motion.get("direction", "")
