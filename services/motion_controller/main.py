@@ -14,14 +14,11 @@ import paho.mqtt.client as mqtt
 MQTT_HOST = os.environ.get("MQTT_HOST", "mosquitto")
 MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
 
-MQTT_TOPIC_VOICE_CMD = os.environ.get(
-    "MQTT_TOPIC_VOICE_CMD", "robot/voice/command"
-)
-MQTT_TOPIC_MOTION_STATUS = os.environ.get(
-    "MQTT_TOPIC_MOTION_STATUS", "robot/motion/status"
-)
+MQTT_TOPIC_VOICE_CMD   = os.environ.get("MQTT_TOPIC_VOICE_CMD",   "robot/voice/command")
+MQTT_TOPIC_MOTION_CMD  = os.environ.get("MQTT_TOPIC_MOTION_CMD",  "robot/motion/command")
+MQTT_TOPIC_SAFETY_STOP = os.environ.get("MQTT_TOPIC_SAFETY_STOP", "robot/safety/stop")
 
-LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
+LOG_LEVEL  = os.environ.get("LOG_LEVEL", "INFO").upper()
 LOG_PREFIX = "[motion_controller] "
 
 logging.basicConfig(
@@ -32,90 +29,40 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+VALID_DIRECTIONS = {"forward", "backward", "left", "right", "stop"}
+
 # -----------------------------------------------------------------------------
-# Core helpers
+# Safety clamping
 # -----------------------------------------------------------------------------
 
-def normalize_command(cmd: Dict[str, Any]) -> Dict[str, Any]:
+def normalize_command(cmd: Dict[str, Any]) -> Dict[str, Any] | None:
     """
-    Normalize a voice command payload into a motion-friendly structure.
-
-    Expected input example:
-      {
-        "intent": "move",
-        "direction": "forward",
-        "duration": 2.0,
-        "speed": 0.5,
-        ...
-      }
-
-    For now, we just sanitize/normalize and pass it through. Later we can map
-    to RoboClaw/ROS2 actions here.
+    Validate and clamp a voice command. Returns None if the command is invalid
+    and a stop should be issued instead.
     """
-    intent = str(cmd.get("intent", "")).lower()
     direction = str(cmd.get("direction", "")).lower()
+    if direction not in VALID_DIRECTIONS:
+        logger.error(f"{LOG_PREFIX}Invalid direction '{direction}' — issuing stop")
+        return None
 
-    # Default safe values
     duration = float(cmd.get("duration", 0.0) or 0.0)
-    speed = float(cmd.get("speed", 0.0) or 0.0)
+    speed    = float(cmd.get("speed",    0.0) or 0.0)
 
-    # Clamp a bit so we don't accidentally do something wild
-    if duration < 0.0:
-        duration = 0.0
-    if duration > 10.0:
-        duration = 10.0
+    duration = max(0.0, min(10.0, duration))
+    speed    = max(0.0, min(1.0,  speed))
 
-    if speed < 0.0:
-        speed = 0.0
-    if speed > 1.0:
-        speed = 1.0
-
-    normalized = {
-        "intent": intent,
-        "direction": direction,
-        "duration": duration,
-        "speed": speed,
-        # room for future fields
-        "raw": cmd,
-    }
-    return normalized
+    return {"direction": direction, "duration": duration, "speed": speed}
 
 
-def simulate_motion_action(command: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Placeholder for real motor control / ROS2 integration.
-
-    For now, we just log and return a status dict that we publish on
-    MQTT_TOPIC_MOTION_STATUS. Later, this is where we'll:
-      - call a RoboClaw driver
-      - publish ROS2 Twist messages
-      - etc.
-    """
-    intent = command.get("intent")
-    direction = command.get("direction")
-    duration = command.get("duration")
-    speed = command.get("speed")
-
-    logger.info(
-        f"{LOG_PREFIX}Simulating motion: intent={intent}, "
-        f"direction={direction}, duration={duration}, speed={speed}"
-    )
-
-    # Fake "execution time" bookkeeping for downstream components
-    status = {
-        "status": "accepted",
-        "intent": intent,
-        "direction": direction,
-        "duration": duration,
-        "speed": speed,
-        "timestamp": int(time.time()),
-        "note": "Simulated motion only (no real motors yet)",
-    }
-    return status
+def stop_payload() -> str:
+    return json.dumps({"direction": "stop", "speed": 0.0, "duration": 0.0})
 
 # -----------------------------------------------------------------------------
 # MQTT callbacks
 # -----------------------------------------------------------------------------
+
+_mqtt_client = None
+
 
 def on_connect(client, userdata, flags, reason_code, properties=None):
     logger.info(
@@ -123,8 +70,9 @@ def on_connect(client, userdata, flags, reason_code, properties=None):
         f"(reason_code={reason_code})"
     )
     client.subscribe(MQTT_TOPIC_VOICE_CMD)
+    client.subscribe(MQTT_TOPIC_SAFETY_STOP)
     logger.info(
-        f"{LOG_PREFIX}Subscribed to {MQTT_TOPIC_VOICE_CMD} for voice commands"
+        f"{LOG_PREFIX}Subscribed to {MQTT_TOPIC_VOICE_CMD} and {MQTT_TOPIC_SAFETY_STOP}"
     )
 
 
@@ -132,36 +80,34 @@ def on_message(client, userdata, msg):
     payload_str = msg.payload.decode("utf-8", "ignore")
     logger.info(f"{LOG_PREFIX}Received on {msg.topic}: {payload_str}")
 
+    if msg.topic == MQTT_TOPIC_SAFETY_STOP:
+        try:
+            data = json.loads(payload_str)
+            reason = data.get("reason", "unknown")
+        except Exception:
+            reason = payload_str or "unknown"
+        logger.warning(f"{LOG_PREFIX}SAFETY STOP received — reason: {reason}")
+        client.publish(MQTT_TOPIC_MOTION_CMD, stop_payload(), qos=1)
+        return
+
     if msg.topic != MQTT_TOPIC_VOICE_CMD:
-        logger.debug(f"{LOG_PREFIX}Ignoring message on {msg.topic}")
         return
 
     try:
         payload = json.loads(payload_str)
     except json.JSONDecodeError as e:
-        logger.error(f"{LOG_PREFIX}Invalid JSON in voice command: {e}")
+        logger.error(f"{LOG_PREFIX}Invalid JSON in voice command: {e} — issuing stop")
+        client.publish(MQTT_TOPIC_MOTION_CMD, stop_payload(), qos=1)
         return
 
     normalized = normalize_command(payload)
-    status = simulate_motion_action(normalized)
+    if normalized is None:
+        client.publish(MQTT_TOPIC_MOTION_CMD, stop_payload(), qos=1)
+        return
 
-    # Publish status/ack so other components (dashboard, logs, etc.)
-    # can see what happened.
-    try:
-        client.publish(
-            MQTT_TOPIC_MOTION_STATUS,
-            json.dumps(status),
-            qos=0,
-            retain=False,
-        )
-        logger.info(
-            f"{LOG_PREFIX}Published motion status on "
-            f"{MQTT_TOPIC_MOTION_STATUS}: {status}"
-        )
-    except Exception as e:
-        logger.exception(
-            f"{LOG_PREFIX}Failed to publish motion status: {e}"
-        )
+    out = json.dumps(normalized)
+    logger.info(f"{LOG_PREFIX}Forwarding to {MQTT_TOPIC_MOTION_CMD}: {out}")
+    client.publish(MQTT_TOPIC_MOTION_CMD, out, qos=1)
 
 # -----------------------------------------------------------------------------
 # Main
@@ -171,8 +117,9 @@ def main() -> None:
     logger.info(
         f"{LOG_PREFIX}Starting motion_controller; "
         f"MQTT={MQTT_HOST}:{MQTT_PORT}, "
-        f"VOICE_CMD_TOPIC={MQTT_TOPIC_VOICE_CMD}, "
-        f"MOTION_STATUS_TOPIC={MQTT_TOPIC_MOTION_STATUS}"
+        f"voice_cmd={MQTT_TOPIC_VOICE_CMD}, "
+        f"motion_cmd={MQTT_TOPIC_MOTION_CMD}, "
+        f"safety_stop={MQTT_TOPIC_SAFETY_STOP}"
     )
 
     client = mqtt.Client(

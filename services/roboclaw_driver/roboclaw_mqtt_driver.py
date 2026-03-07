@@ -3,7 +3,7 @@ import json
 import time
 import signal
 import logging
-from threading import Event, Thread
+from threading import Event, Lock, Thread
 from datetime import datetime, timezone
 
 import paho.mqtt.client as mqtt
@@ -59,6 +59,12 @@ class RoboClawDriver:
             except Exception as e:
                 logging.error(f"Failed to create serial port for RoboClaw: {e}")
 
+        # Duty state shared between command() and heartbeat loop.
+        # Heartbeat sends DutyM1M2(m1, m2) every 400ms to satisfy the
+        # 500ms hardware watchdog even during long motion commands.
+        self._duty_lock = Lock()
+        self._current_duty = (0, 0)
+
         self._connect()
 
     def _connect(self):
@@ -94,8 +100,18 @@ class RoboClawDriver:
         except Exception as e:
             logging.warning(f"Could not read version from RoboClaw: {e}")
 
+        # Configure hardware serial watchdog: cmd 14, value in units of 100ms.
+        # Value 5 = 500ms — motors cut if no valid serial command arrives.
+        try:
+            self.rc._write1(self.address, 14, 5)
+            logging.info("RoboClaw serial watchdog set to 500ms")
+        except Exception as e:
+            logging.warning(f"Could not set RoboClaw watchdog timeout: {e}")
+
     def stop(self):
         logging.info("Stopping motors (DutyM1M2 0,0)")
+        with self._duty_lock:
+            self._current_duty = (0, 0)
         try:
             self.rc.DutyM1M2(self.address, 0, 0)
         except Exception as e:
@@ -116,7 +132,10 @@ class RoboClawDriver:
         m1 = 0
         m2 = 0
 
-        if direction == "forward":
+        if direction == "stop":
+            self.stop()
+            return
+        elif direction == "forward":
             m1 = duty
             m2 = duty
         elif direction == "backward":
@@ -137,6 +156,8 @@ class RoboClawDriver:
             f"duty(m1,m2)=({m1},{m2})"
         )
 
+        with self._duty_lock:
+            self._current_duty = (m1, m2)
         try:
             self.rc.DutyM1M2(self.address, m1, m2)
             if duration > 0:
@@ -249,6 +270,22 @@ def mqtt_loop(client):
         client.loop(timeout=1.0)
 
 
+def heartbeat_loop(driver: RoboClawDriver):
+    """
+    Send DutyM1M2 every 400ms to satisfy the 500ms hardware watchdog.
+    When idle the duty is (0,0); during motion it reflects the active command.
+    """
+    logging.info("Starting RoboClaw heartbeat loop (400ms interval)")
+    while not stop_event.is_set():
+        with driver._duty_lock:
+            m1, m2 = driver._current_duty
+        try:
+            driver.rc.DutyM1M2(driver.address, m1, m2)
+        except Exception as e:
+            logging.warning(f"Heartbeat error: {e}")
+        time.sleep(0.4)
+
+
 def telemetry_loop(driver: RoboClawDriver, client: mqtt.Client):
     """
     Background loop to read RoboClaw telemetry and publish to MQTT.
@@ -291,6 +328,10 @@ def main():
     # Start MQTT loop thread
     t_mqtt = Thread(target=mqtt_loop, args=(client,))
     t_mqtt.start()
+
+    # Start watchdog heartbeat thread
+    t_heartbeat = Thread(target=heartbeat_loop, args=(driver,))
+    t_heartbeat.start()
 
     # Start telemetry loop thread
     t_telemetry = Thread(target=telemetry_loop, args=(driver, client))

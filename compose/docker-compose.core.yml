@@ -101,7 +101,11 @@ services:
       - MQTT_HOST=mosquitto
       - MQTT_PORT=1883
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - CLAUDE_MODEL=claude-opus-4-6
+      - CLAUDE_MODEL=claude-sonnet-4-6
+      - MEMORY_PATH=/data/oscar_memory.json
+      - HISTORY_WINDOW=20
+    volumes:
+      - oscar_memory:/data
     depends_on:
       - mosquitto
     networks:
@@ -109,6 +113,7 @@ services:
 
 volumes:
   mosquitto_data:
+  oscar_memory:
 
 networks:
   robot-core:
