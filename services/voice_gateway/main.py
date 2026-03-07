@@ -3,6 +3,7 @@ import json
 import asyncio
 import logging
 import sys
+import threading
 from typing import Optional
 
 import paho.mqtt.client as mqtt
@@ -400,6 +401,9 @@ def handle_stt_request(client: mqtt.Client, payload: bytes) -> None:
 # MQTT callbacks
 # -----------------------------------------------------------------------------
 
+STARTUP_MESSAGE = os.environ.get("STARTUP_MESSAGE", "OSCAR is online")
+STARTUP_DELAY = float(os.environ.get("STARTUP_DELAY_SECS", "5"))
+
 def on_connect(client, userdata, flags, reason_code, properties=None):
     logging.info(f"{LOG_PREFIX}Connected to MQTT at {MQTT_HOST}:{MQTT_PORT}")
     client.subscribe(MQTT_TOPIC_TTS)
@@ -409,6 +413,13 @@ def on_connect(client, userdata, flags, reason_code, properties=None):
         f"{LOG_PREFIX}Subscribed to "
         f"{MQTT_TOPIC_TTS}, {MQTT_TOPIC_STT_REQ}, {MQTT_TOPIC_STT_TEXT}"
     )
+    if STARTUP_MESSAGE:
+        threading.Timer(
+            STARTUP_DELAY,
+            speak_text,
+            args=[STARTUP_MESSAGE],
+            kwargs={"mqtt_client": client},
+        ).start()
 
 
 def on_message(client, userdata, msg):
