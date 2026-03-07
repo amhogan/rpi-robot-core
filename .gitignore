@@ -32,3 +32,4 @@ log/
 .env
 *.key
 *.pem
+docker/nginx.htpasswd
