@@ -28,7 +28,7 @@ services:
     restart: unless-stopped
     # No args needed — handler loads the model requested by the client via Detect event.
     # To add a custom oscar model: mount oscar.tflite and pass --custom-model-dir /custom.
-    command: ["--threshold", "0.4", "--refractory-seconds", "12"]
+    command: ["--threshold", "0.4", "--refractory-seconds", "5"]
     ports:
       - "10400:10400"
     networks:
@@ -55,7 +55,7 @@ services:
       - WY_WAKE_URI=tcp://wyoming-openwakeword:10400
       - WAKE_WORD=okay_nabu
       - WAKE_BEEP_PATH=/app/sfx_beep.py
-      - WAKE_COOLDOWN_SECS=12
+      - WAKE_COOLDOWN_SECS=3
       - STT_SECONDS_DEFAULT=5
       - APLAY_DEVICE=plughw:USB,0
       - ARECORD_DEVICE=plughw:USB,0

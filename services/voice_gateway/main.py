@@ -158,13 +158,18 @@ async def _play_tts(text: str) -> None:
         await writer.wait_closed()
 
 
-def speak_text(text: str) -> None:
+MQTT_TOPIC_TTS_DONE = "robot/tts/done"
+
+def speak_text(text: str, mqtt_client=None) -> None:
     """Run async TTS from a synchronous MQTT callback."""
     logging.info(f"{LOG_PREFIX}TTS request: '{text}'")
     try:
         asyncio.run(_play_tts(text))
     except Exception as e:
         logging.exception(f"{LOG_PREFIX}Error in speak_text: {e}")
+    finally:
+        if mqtt_client:
+            mqtt_client.publish(MQTT_TOPIC_TTS_DONE, "1")
 
 # -----------------------------------------------------------------------------
 # STT (Whisper)
@@ -415,7 +420,7 @@ def on_message(client, userdata, msg):
             payload = json.loads(payload_str)
             text = payload.get("text", "").strip()
             if text:
-                speak_text(text)
+                speak_text(text, mqtt_client=client)
             else:
                 logging.warning(
                     f"{LOG_PREFIX}Empty text in TTS payload"

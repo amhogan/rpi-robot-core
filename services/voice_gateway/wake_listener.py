@@ -42,6 +42,10 @@ MQTT_CID          = env_str("MQTT_CLIENT_ID", "robot-wake-listener")
 
 TOPIC_WAKE        = f"{BASE}/wake/detected"
 TOPIC_STT_CAPTURE = env_str("MQTT_TOPIC_STT_CAPTURE", f"{BASE}/stt/request")
+TOPIC_TTS_DONE    = f"{BASE}/tts/done"
+
+# Set by MQTT callback when TTS playback completes; cleared on each wake trigger
+_tts_done = threading.Event()
 
 # Mic capture format (keep in sync with OpenWakeWord model expectations)
 RATE              = env_int("AUDIO_RATE", 16000)
@@ -76,11 +80,17 @@ def log(*a):
 
 # ---------- MQTT ----------
 _mqtt = None
+def _on_mqtt_message(client, userdata, msg):
+    if msg.topic == TOPIC_TTS_DONE:
+        _tts_done.set()
+
 def mqtt_connect():
     global _mqtt
     c = mqtt.Client(client_id=MQTT_CID, clean_session=True, protocol=mqtt.MQTTv311, transport="tcp")
+    c.on_message = _on_mqtt_message
     c.connect(MQTT_HOST, MQTT_PORT, 60)
     c.loop_start()
+    c.subscribe(TOPIC_TTS_DONE)
     _mqtt = c
     log(f"[wake] MQTT connected rc=0; publishing to {TOPIC_WAKE} and {TOPIC_STT_CAPTURE}")
 
@@ -182,10 +192,14 @@ async def stream_and_listen():
                 await stop_arecord(proc)
 
                 # Trigger STT (voice gateway will start its own arecord)
+                _tts_done.clear()
                 mqtt_publish(TOPIC_STT_CAPTURE, json.dumps({"seconds": CAPTURE_SECS}), qos=0, retain=False)
 
-                # Wait for STT window to finish, then resume streaming to OWW
+                # Wait for STT window to finish, then wait for TTS playback to complete
                 await asyncio.sleep(CAPTURE_SECS + 0.2)
+                loop = asyncio.get_running_loop()
+                await loop.run_in_executor(None, lambda: _tts_done.wait(20))
+                await asyncio.sleep(0.5)  # brief pause after TTS ends
 
                 # Respawn arecord and restart pump
                 proc = await spawn_arecord()
