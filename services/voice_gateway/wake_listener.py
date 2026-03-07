@@ -82,17 +82,22 @@ def log(*a):
 _mqtt = None
 def _on_mqtt_message(client, userdata, msg):
     if msg.topic == TOPIC_TTS_DONE:
+        log("[wake] TTS done received, re-arming")
         _tts_done.set()
+
+def _on_mqtt_connect(client, userdata, flags, rc):
+    client.subscribe(TOPIC_TTS_DONE)
+    log(f"[wake] MQTT connected rc={rc}; subscribed to {TOPIC_TTS_DONE}")
 
 def mqtt_connect():
     global _mqtt
     c = mqtt.Client(client_id=MQTT_CID, clean_session=True, protocol=mqtt.MQTTv311, transport="tcp")
+    c.on_connect = _on_mqtt_connect
     c.on_message = _on_mqtt_message
     c.connect(MQTT_HOST, MQTT_PORT, 60)
     c.loop_start()
-    c.subscribe(TOPIC_TTS_DONE)
     _mqtt = c
-    log(f"[wake] MQTT connected rc=0; publishing to {TOPIC_WAKE} and {TOPIC_STT_CAPTURE}")
+    log(f"[wake] MQTT connecting to {MQTT_HOST}:{MQTT_PORT}")
 
 def mqtt_publish(topic, payload, qos=0, retain=False):
     if _mqtt is None:
