@@ -153,7 +153,7 @@ async def stream_and_listen():
         while True:
             evt = await client.read_event()
             if evt is None:
-                break
+                raise ConnectionResetError("OWW connection closed")
 
             et = getattr(evt, "type", None)
             data = getattr(evt, "data", {}) or {}
