@@ -3,9 +3,10 @@ FROM python:3.11-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# ALSA tools (playback/capture) for Jabra tests
+# ALSA tools + PulseAudio plugin (routes aplay through PipeWire/Bluetooth)
 RUN apt-get update && apt-get install -y --no-install-recommends \
       alsa-utils \
+      libasound2-plugins \
       ca-certificates \
       && rm -rf /var/lib/apt/lists/*
 

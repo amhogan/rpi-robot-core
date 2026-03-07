@@ -57,13 +57,16 @@ services:
       - WAKE_BEEP_PATH=/app/sfx_beep.py
       - WAKE_COOLDOWN_SECS=3
       - STT_SECONDS_DEFAULT=5
-      - APLAY_DEVICE=plughw:USB,0
+      - APLAY_DEVICE=pulse
       - ARECORD_DEVICE=plughw:USB,0
       - STT_DEFAULT_SECONDS=5
+      - PULSE_SERVER=unix:/run/user/1000/pulse/native
     networks:
       - robot-core
     devices:
       - /dev/snd:/dev/snd
+    volumes:
+      - /run/user/1000/pulse:/run/user/1000/pulse
 
 networks:
   robot-core:
