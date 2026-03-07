@@ -157,8 +157,7 @@ async def stream_and_listen():
 
             et = getattr(evt, "type", None)
             data = getattr(evt, "data", {}) or {}
-
-            if Detection.is_type(evt) or et == "wake":
+            if Detection.is_type(et) or et == "wake":
                 now = time.time()
                 if now - last_wake_ts < WAKE_COOLDOWN:
                     continue
