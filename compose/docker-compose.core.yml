@@ -29,7 +29,6 @@ services:
   dashboard:
     image: nginx:1.27-alpine
     ports:
-      - "80:80"
       - "443:443"
     container_name:  robot-dashboard
     restart: unless-stopped
@@ -111,6 +110,26 @@ services:
       - oscar_memory:/data
     depends_on:
       - mosquitto
+    networks:
+      - robot-core
+
+  lidar_publisher:
+    build: ../lidar
+    container_name: lidar_publisher
+    restart: unless-stopped
+    depends_on:
+      - mosquitto
+    devices:
+      - "${LIDAR_PORT:-/dev/rplidar}:/dev/rplidar"
+    environment:
+      LIDAR_PORT: "/dev/rplidar"
+      MQTT_HOST: "mosquitto"
+      MQTT_PORT: "1883"
+      LIDAR_BAUDRATE: "${LIDAR_BAUDRATE:-115200}"
+      LIDAR_SCAN_MODE: "${LIDAR_SCAN_MODE:-force}"
+      LIDAR_PUBLISH_HZ: "${LIDAR_PUBLISH_HZ:-5}"
+      LIDAR_MIN_QUALITY: "${LIDAR_MIN_QUALITY:-10}"
+      LIDAR_HEALTH_INTERVAL: "${LIDAR_HEALTH_INTERVAL:-30}"
     networks:
       - robot-core
 

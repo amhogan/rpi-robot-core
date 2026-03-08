@@ -13,7 +13,7 @@ import time
 from typing import Optional
 
 import paho.mqtt.client as mqtt
-from rplidar import RPLidar, RPLidarException
+from rplidar import RPLidar, RPLidarException, _process_scan
 
 # ---------------------------------------------------------------------------
 # Configuration (override via environment variables)
@@ -102,6 +102,33 @@ def publish_health(client: mqtt.Client, lidar: RPLidar):
 
 
 # ---------------------------------------------------------------------------
+# Force-scan helper
+# ---------------------------------------------------------------------------
+def _force_scan_iter(lidar: RPLidar, window_s: float = 0.2):
+    """Yield time-windowed scan batches using FORCE SCAN mode.
+
+    Force scan doesn't set the new_scan revolution flag, so iter_scans()
+    never yields. Instead we accumulate measurements for `window_s` seconds
+    and yield whatever we collected, mimicking one scan batch.
+    """
+    lidar.start_motor()
+    lidar.start("force")
+    dsize = lidar.scanning[1]
+    batch = []
+    deadline = time.time() + window_s
+    while True:
+        raw = lidar._read_response(dsize)
+        new_scan, quality, angle, distance = _process_scan(raw)
+        if quality >= MIN_QUALITY and distance > 0:
+            batch.append((quality, angle, distance))
+        if time.time() >= deadline:
+            if batch:
+                yield batch
+            batch = []
+            deadline = time.time() + window_s
+
+
+# ---------------------------------------------------------------------------
 # Main loop
 # ---------------------------------------------------------------------------
 def run():
@@ -121,24 +148,43 @@ def run():
     lidar: Optional[RPLidar] = None
     min_interval = 1.0 / PUBLISH_HZ
     last_publish  = 0.0
-    last_health   = 0.0
+    last_health   = time.time()  # defer first health check by HEALTH_INTERVAL
 
     while running:
         try:
             if lidar is None:
                 lidar = lidar_connect_with_retry()
 
-            scan_iter = (
-                lidar.iter_scans(scan_type="express")
-                if SCAN_MODE == "express_disabled"
-                else lidar.iter_scans()
-            )
+            if SCAN_MODE == "force":
+                # Force scan works even when the motor isn't spinning.
+                # The data format is identical to normal scan, but the new_scan
+                # flag is never set (no revolution marker), so iter_scans()
+                # never yields. We use a time-windowed accumulator instead.
+                scan_iter = _force_scan_iter(lidar)
+            elif SCAN_MODE == "express":
+                scan_iter = lidar.iter_scans(scan_type="express")
+            else:
+                scan_iter = lidar.iter_scans()
 
             for scan in scan_iter:
                 if not running:
                     break
 
                 now = time.time()
+
+                # Health check: stop scanning, query, then fully reconnect
+                if now - last_health >= HEALTH_INTERVAL:
+                    try:
+                        lidar.stop()
+                        publish_health(mqtt_client, lidar)
+                    finally:
+                        try:
+                            lidar.disconnect()
+                        except Exception:
+                            pass
+                        lidar = None
+                    last_health = now
+                    break  # outer while loop will do a fresh lidar_connect_with_retry()
 
                 if now - last_publish < min_interval:
                     continue
@@ -157,10 +203,6 @@ def run():
                     })
                     mqtt_client.publish(MQTT_TOPIC_SCAN, payload)
                     last_publish = now
-
-                if now - last_health >= HEALTH_INTERVAL:
-                    publish_health(mqtt_client, lidar)
-                    last_health = now
 
         except RPLidarException as exc:
             log.error("LIDAR error: %s — reconnecting in 5s", exc)

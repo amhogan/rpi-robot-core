@@ -43,7 +43,7 @@
     /* ---- Layout ---- */
     main {
       display: grid;
-      grid-template-columns: 1fr 300px;
+      grid-template-columns: 1fr 1fr 300px;
       grid-template-rows: auto auto;
       gap: 0.875rem;
       padding: 0.875rem;
@@ -56,15 +56,16 @@
       padding: 0.875rem;
     }
     .card h2 {
-      font-size: 0.65rem;
+      font-size: 14px;
       text-transform: uppercase;
       letter-spacing: 0.12em;
-      color: var(--muted);
+      color: #ffffff;
       margin-bottom: 0.75rem;
     }
 
     /* ---- Camera ---- */
     #camera-card { grid-column: 1; grid-row: 1; }
+    #lidar-card  { grid-column: 2; grid-row: 1; }
     #camera-card .card-header {
       display: flex;
       align-items: center;
@@ -95,6 +96,7 @@
 
     /* ---- Drive controls ---- */
     #drive-card { grid-column: 1; grid-row: 2; }
+    #motion-card { grid-column: 2; grid-row: 2; }
 
     .drive-layout {
       display: flex;
@@ -155,8 +157,7 @@
     .kbd-hint { color: var(--muted); font-size: 0.65rem; margin-top: 0.875rem; }
 
     /* ---- Status panels ---- */
-    #status-card { grid-column: 2; grid-row: 1; }
-    #motion-card { grid-column: 2; grid-row: 2; }
+    #status-card { grid-column: 3; grid-row: 1; }
 
     .stat-row {
       display: flex;
@@ -188,10 +189,36 @@
 
     #last-updated { color: var(--muted); font-size: 0.6rem; margin-top: 0.625rem; }
 
+    /* ---- LIDAR panel ---- */
+    #lidar-card .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.75rem;
+    }
+    #lidar-card .card-header h2 { margin-bottom: 0; }
+    #lidar-wrap {
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      gap: 1.25rem;
+      flex-wrap: wrap;
+    }
+    #lidar-canvas { border-radius: 4px; display: block; }
+    #lidar-legend {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      font-size: 0.68rem;
+      color: var(--muted);
+      padding-top: 0.25rem;
+    }
+    #lidar-legend .dot { font-size: 0.9rem; line-height: 1; }
+
     /* ---- Log panel ---- */
     #log-card {
-      grid-column: 1 / -1;
-      grid-row: 3;
+      grid-column: 3;
+      grid-row: 2;
     }
     #log-card .card-header {
       display: flex;
@@ -244,9 +271,10 @@
     /* ---- Responsive ---- */
     @media (max-width: 680px) {
       main { grid-template-columns: 1fr; }
-      #camera-card, #drive-card, #status-card, #motion-card, #log-card { grid-column: 1; grid-row: auto; }
+      #camera-card, #lidar-card, #status-card, #drive-card, #motion-card, #log-card { grid-column: 1; grid-row: auto; }
     }
   </style>
+  <script src="/mqtt.min.js"></script>
 </head>
 <body>
 
@@ -317,6 +345,27 @@
     <div class="stat-row"><span class="stat-label">Age</span>      <span class="stat-value" id="m-age">—</span></div>
     <div class="stat-row"><span class="stat-label">Controller</span><span class="stat-value" id="m-status">—</span></div>
   </div>
+  <!-- LIDAR -->
+  <div class="card" id="lidar-card">
+    <div class="card-header">
+      <h2>LIDAR</h2>
+      <div style="display:flex; gap:0.75rem; align-items:center;">
+        <span id="lidar-closest" style="font-size:0.7rem; color:var(--accent);">—</span>
+        <span class="chip" id="chip-lidar">offline</span>
+      </div>
+    </div>
+    <div id="lidar-wrap">
+      <canvas id="lidar-canvas" width="300" height="300"></canvas>
+      <div id="lidar-legend">
+        <div><span class="dot" style="color:var(--red);">●</span> &lt; 0.6 m</div>
+        <div><span class="dot" style="color:var(--yellow);">●</span> 0.6 – 1.5 m</div>
+        <div><span class="dot" style="color:var(--accent);">●</span> &gt; 1.5 m</div>
+        <div style="margin-top:0.75rem; color:var(--muted);">Last scan</div>
+        <div id="lidar-age" style="color:var(--text);">—</div>
+      </div>
+    </div>
+  </div>
+
   <!-- Conversation / event log -->
   <div class="card" id="log-card">
     <div class="card-header">
@@ -597,6 +646,127 @@ document.addEventListener('keyup', e => {
     if (dir !== 'stop') sendCommand('stop');
   }
 });
+
+// ---- LIDAR visualization ----
+(function () {
+  const canvas  = document.getElementById('lidar-canvas');
+  const ctx     = canvas.getContext('2d');
+  const MAX_MM  = 6000;
+  const RINGS   = [1000, 2000, 3000, 4000, 5000];
+
+  function ptColor(d) {
+    if (d < 600)  return '#ff5252';
+    if (d < 1500) return '#ffc947';
+    return '#4a9eff';
+  }
+
+  function drawScan(data) {
+    const W = canvas.width, H = canvas.height;
+    const cx = W / 2, cy = H / 2;
+    const R  = Math.min(W, H) / 2 - 22;
+
+    ctx.fillStyle = '#0e1117';
+    ctx.fillRect(0, 0, W, H);
+
+    // Range rings
+    ctx.lineWidth = 1;
+    for (const mm of RINGS) {
+      const r = (mm / MAX_MM) * R;
+      ctx.strokeStyle = '#1e2a3a';
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = '#2a3a55';
+      ctx.font = '9px monospace';
+      ctx.fillText(mm / 1000 + 'm', cx + r + 3, cy - 2);
+    }
+
+    // Cross hairs
+    ctx.strokeStyle = '#1e2a3a';
+    ctx.setLineDash([3, 5]);
+    ctx.beginPath(); ctx.moveTo(cx, cy - R); ctx.lineTo(cx, cy + R); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx - R, cy); ctx.lineTo(cx + R, cy); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Cardinal labels
+    ctx.fillStyle = '#3a4a66';
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('F', cx, cy - R + 11);
+    ctx.fillText('B', cx, cy + R - 2);
+    ctx.textAlign = 'left';
+    ctx.fillText('L', cx - R + 2, cy + 4);
+    ctx.textAlign = 'right';
+    ctx.fillText('R', cx + R - 2, cy + 4);
+    ctx.textAlign = 'left';
+
+    // Scan points
+    let minDist = Infinity;
+    for (const pt of data.pts) {
+      if (!pt.d || pt.d <= 0) continue;
+      const r   = Math.min((pt.d / MAX_MM) * R, R);
+      const rad = (pt.a * Math.PI) / 180;
+      const x   = cx + r * Math.sin(rad);
+      const y   = cy - r * Math.cos(rad);
+      ctx.fillStyle = ptColor(pt.d);
+      ctx.beginPath();
+      ctx.arc(x, y, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+      if (pt.d < minDist) minDist = pt.d;
+    }
+
+    // Robot marker
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(cx, cy, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#0e1117';
+    ctx.beginPath(); ctx.arc(cx, cy, 2.5, 0, Math.PI * 2); ctx.fill();
+
+    // Closest readout
+    const el = document.getElementById('lidar-closest');
+    if (minDist < Infinity) {
+      el.textContent  = 'nearest ' + (minDist / 1000).toFixed(2) + ' m';
+      el.style.color  = minDist < 600 ? 'var(--red)' : minDist < 1500 ? 'var(--yellow)' : 'var(--accent)';
+    }
+    document.getElementById('lidar-age').textContent = new Date().toLocaleTimeString();
+  }
+
+  // Draw idle grid immediately so the canvas is visible before first scan
+  drawScan({ pts: [] });
+
+  if (typeof mqtt === 'undefined') {
+    document.getElementById('chip-lidar').textContent = 'no js';
+    return;
+  }
+
+  const client = mqtt.connect('wss://' + location.host + '/mqtt', {
+    clientId:        'oscar_dash_' + Math.random().toString(16).slice(2, 8),
+    reconnectPeriod: 3000,
+    keepalive:       30,
+  });
+
+  client.on('connect', () => {
+    client.subscribe('robot/lidar/scan');
+    client.subscribe('robot/lidar/health');
+  });
+
+  client.on('message', (topic, payload) => {
+    try {
+      const data = JSON.parse(payload.toString());
+      if (topic === 'robot/lidar/scan') {
+        drawScan(data);
+      } else if (topic === 'robot/lidar/health') {
+        const ok = data.status === 'Good' || data.status === 'online';
+        const chip = document.getElementById('chip-lidar');
+        chip.className   = 'chip ' + (ok ? 'chip-ok' : 'chip-err');
+        chip.textContent = ok ? 'LIDAR' : (data.status || 'error');
+      }
+    } catch (_) {}
+  });
+
+  client.on('connect',    () => { document.getElementById('chip-lidar').className = 'chip chip-ok'; document.getElementById('chip-lidar').textContent = 'LIDAR'; });
+  client.on('error',      () => { document.getElementById('chip-lidar').className = 'chip chip-err'; document.getElementById('chip-lidar').textContent = 'error'; });
+  client.on('disconnect', () => { document.getElementById('chip-lidar').className = 'chip chip-err'; document.getElementById('chip-lidar').textContent = 'offline'; });
+})();
 </script>
 </body>
 </html>
