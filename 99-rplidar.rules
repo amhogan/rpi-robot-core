@@ -1,0 +1,7 @@
+# /etc/udev/rules.d/99-rplidar.rules
+# Creates a stable /dev/rplidar symlink for the RPLIDAR A1M8 (CP2102 USB adapter).
+SUBSYSTEM=="tty", \
+  ATTRS{idVendor}=="10c4", \
+  ATTRS{idProduct}=="ea60", \
+  SYMLINK+="rplidar", \
+  MODE="0666"
