@@ -4,6 +4,7 @@ import asyncio
 import logging
 import sys
 import threading
+import time
 from typing import Optional
 
 import paho.mqtt.client as mqtt
@@ -122,6 +123,11 @@ async def _play_tts(text: str) -> None:
                     *cmd,
                     stdin=asyncio.subprocess.PIPE,
                 )
+                # Prepend silence to wake the BT sink before real audio arrives.
+                # BT A2DP links typically need ~500-800ms to unsuspend.
+                silence_frames = int(rate * 0.7)
+                aplay_proc.stdin.write(b"\x00" * silence_frames * width * channels)
+                await aplay_proc.stdin.drain()
 
             elif etype == "audio-chunk":
                 if not aplay_proc or not aplay_proc.stdin:
@@ -170,6 +176,9 @@ def speak_text(text: str, mqtt_client=None) -> None:
         logging.exception(f"{LOG_PREFIX}Error in speak_text: {e}")
     finally:
         if mqtt_client:
+            # Delay tts/done so the BT audio buffer fully drains before the
+            # wake listener re-arms the mic (prevents echo re-triggering).
+            time.sleep(1.5)
             mqtt_client.publish(MQTT_TOPIC_TTS_DONE, "1")
 
 # -----------------------------------------------------------------------------
