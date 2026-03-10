@@ -46,6 +46,7 @@ services:
 
   roboclaw_driver:
     build: ../services/roboclaw_driver
+    container_name: roboclaw_driver
     restart: unless-stopped
     depends_on:
       - mosquitto
