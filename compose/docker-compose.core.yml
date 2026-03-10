@@ -30,7 +30,7 @@ services:
     image: nginx:1.27-alpine
     ports:
       - "443:443"
-    container_name:  robot-dashboard
+    container_name: robot-dashboard
     restart: unless-stopped
     volumes:
       - ../site:/usr/share/nginx/html:ro
@@ -73,6 +73,24 @@ services:
       - MQTT_TOPIC_CMD=robot/motion/command
     ports:
       - "8000:8000"
+    networks:
+      - robot-core
+
+  motion_controller:
+    build:
+      context: ../services/motion_controller
+    container_name: motion_controller
+    restart: unless-stopped
+    depends_on:
+      - mosquitto
+    environment:
+      - MQTT_HOST=mosquitto
+      - MQTT_PORT=1883
+      - MQTT_TOPIC_VOICE_CMD=robot/voice/command
+      - MQTT_TOPIC_MOTION_CMD=robot/motion/command
+      - MQTT_TOPIC_SAFETY_STOP=robot/safety/stop
+      - MQTT_TOPIC_MOTION_STATUS=robot/motion/status
+      - LOG_LEVEL=INFO
     networks:
       - robot-core
 
@@ -133,9 +151,81 @@ services:
     networks:
       - robot-core
 
+  wyoming-piper:
+    image: rhasspy/wyoming-piper:latest
+    container_name: wyoming-piper
+    restart: unless-stopped
+    command: ["--voice", "en_US-lessac-medium"]
+    ports:
+      - "10200:10200"
+    networks:
+      - robot-core
+    volumes:
+      - wyoming_piper_data:/data
+
+  wyoming-whisper:
+    image: rhasspy/wyoming-whisper:latest
+    container_name: wyoming-whisper
+    restart: unless-stopped
+    command: ["--model", "tiny-int8", "--language", "en"]
+    ports:
+      - "10300:10300"
+    networks:
+      - robot-core
+    volumes:
+      - wyoming_whisper_data:/data
+
+  wyoming-openwakeword:
+    image: rhasspy/wyoming-openwakeword:latest
+    container_name: wyoming-openwakeword
+    restart: unless-stopped
+    command: ["--threshold", "0.4", "--refractory-seconds", "5"]
+    ports:
+      - "10400:10400"
+    networks:
+      - robot-core
+    volumes:
+      - wyoming_openwakeword_data:/data
+
+  voice_gateway:
+    build:
+      context: ../services/voice_gateway
+    container_name: voice_gateway
+    restart: unless-stopped
+    depends_on:
+      - mosquitto
+      - wyoming-piper
+      - wyoming-whisper
+      - wyoming-openwakeword
+    environment:
+      - MQTT_HOST=mosquitto
+      - MQTT_PORT=1883
+      - PIPER_HOST=wyoming-piper
+      - PIPER_PORT=10200
+      - WHISPER_HOST=wyoming-whisper
+      - WHISPER_PORT=10300
+      - WY_WAKE_URI=tcp://wyoming-openwakeword:10400
+      - WAKE_WORD=okay_nabu
+      - WAKE_BEEP_PATH=/app/sfx_beep.py
+      - WAKE_COOLDOWN_SECS=3
+      - STT_SECONDS_DEFAULT=5
+      - APLAY_DEVICE=pulse
+      - ARECORD_DEVICE=plughw:USB,0
+      - STT_DEFAULT_SECONDS=5
+      - PULSE_SERVER=unix:/run/user/1000/pulse/native
+    networks:
+      - robot-core
+    devices:
+      - /dev/snd:/dev/snd
+    volumes:
+      - /run/user/1000/pulse:/run/user/1000/pulse
+
 volumes:
   mosquitto_data:
   oscar_memory:
+  wyoming_piper_data:
+  wyoming_whisper_data:
+  wyoming_openwakeword_data:
 
 networks:
   robot-core:
