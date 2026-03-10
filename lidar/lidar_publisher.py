@@ -13,7 +13,7 @@ import time
 from typing import Optional
 
 import paho.mqtt.client as mqtt
-from rplidar import RPLidar, RPLidarException, _process_scan
+from rplidar import RPLidar, RPLidarException
 
 # ---------------------------------------------------------------------------
 # Configuration (override via environment variables)
@@ -102,33 +102,6 @@ def publish_health(client: mqtt.Client, lidar: RPLidar):
 
 
 # ---------------------------------------------------------------------------
-# Force-scan helper
-# ---------------------------------------------------------------------------
-def _force_scan_iter(lidar: RPLidar, window_s: float = 0.2):
-    """Yield time-windowed scan batches using FORCE SCAN mode.
-
-    Force scan doesn't set the new_scan revolution flag, so iter_scans()
-    never yields. Instead we accumulate measurements for `window_s` seconds
-    and yield whatever we collected, mimicking one scan batch.
-    """
-    lidar.start_motor()
-    lidar.start("force")
-    dsize = lidar.scanning[1]
-    batch = []
-    deadline = time.time() + window_s
-    while True:
-        raw = lidar._read_response(dsize)
-        new_scan, quality, angle, distance = _process_scan(raw)
-        if quality >= MIN_QUALITY and distance > 0:
-            batch.append((quality, angle, distance))
-        if time.time() >= deadline:
-            if batch:
-                yield batch
-            batch = []
-            deadline = time.time() + window_s
-
-
-# ---------------------------------------------------------------------------
 # Main loop
 # ---------------------------------------------------------------------------
 def run():
@@ -155,13 +128,7 @@ def run():
             if lidar is None:
                 lidar = lidar_connect_with_retry()
 
-            if SCAN_MODE == "force":
-                # Force scan works even when the motor isn't spinning.
-                # The data format is identical to normal scan, but the new_scan
-                # flag is never set (no revolution marker), so iter_scans()
-                # never yields. We use a time-windowed accumulator instead.
-                scan_iter = _force_scan_iter(lidar)
-            elif SCAN_MODE == "express":
+            if SCAN_MODE == "express":
                 scan_iter = lidar.iter_scans(scan_type="express")
             else:
                 scan_iter = lidar.iter_scans()
