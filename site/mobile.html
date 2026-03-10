@@ -1,0 +1,689 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <title>O.S.C.A.R.</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #0e1117;
+      --surface: #1a1f2e;
+      --border:  #2a3040;
+      --accent:  #4a9eff;
+      --green:   #3ddc84;
+      --yellow:  #ffc947;
+      --red:     #ff5252;
+      --text:    #e2e8f0;
+      --muted:   #7a8499;
+      --tab-h:   60px;
+      --hdr-h:   48px;
+    }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'SF Mono', 'Fira Code', ui-monospace, monospace;
+      font-size: 13px;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* ---- Header ---- */
+    header {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: var(--hdr-h);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 1rem;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      z-index: 100;
+    }
+    header h1 { font-size: 16pt; color: #fff; letter-spacing: 0.06em; }
+    .hdr-chips { display: flex; gap: 0.4rem; }
+
+    /* ---- Tab pages ---- */
+    .pages {
+      position: fixed;
+      top: var(--hdr-h);
+      bottom: var(--tab-h);
+      left: 0; right: 0;
+      overflow: hidden;
+    }
+    .page {
+      display: none;
+      height: 100%;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      padding: 0.75rem;
+    }
+    .page.active { display: flex; flex-direction: column; gap: 0.75rem; }
+
+    /* ---- Bottom tab bar ---- */
+    nav {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      height: var(--tab-h);
+      display: flex;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      z-index: 100;
+    }
+    .tab {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 0.6rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      border: none;
+      background: none;
+      -webkit-tap-highlight-color: transparent;
+      transition: color 0.12s;
+    }
+    .tab .icon { font-size: 1.3rem; line-height: 1; }
+    .tab.active { color: var(--accent); }
+
+    /* ---- Cards ---- */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.875rem;
+      flex-shrink: 0;
+    }
+    .card h2 {
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: #fff;
+      margin-bottom: 0.75rem;
+    }
+
+    /* ---- Drive page ---- */
+    #camera-feed {
+      width: 100%;
+      display: block;
+      border-radius: 4px;
+      background: #000;
+      max-height: 220px;
+      object-fit: contain;
+    }
+
+    .drive-area {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .dpad {
+      display: grid;
+      grid-template-areas:
+        ".    fwd   ."
+        "left stop  right"
+        ".    back  .";
+      gap: 10px;
+    }
+    .dpad button {
+      width: 78px;
+      height: 78px;
+      font-size: 1.8rem;
+      background: var(--border);
+      border: 1px solid #3a4555;
+      border-radius: 10px;
+      color: var(--text);
+      cursor: pointer;
+      user-select: none;
+      touch-action: none;
+      transition: background 0.08s, transform 0.08s;
+    }
+    .dpad button:active,
+    .dpad button.active { background: var(--accent); color: #fff; transform: scale(0.93); }
+    #btn-fwd   { grid-area: fwd; }
+    #btn-left  { grid-area: left; }
+    #btn-stop  { grid-area: stop; background: #1e1212; border-color: var(--red); color: var(--red); }
+    #btn-stop:active, #btn-stop.active { background: var(--red); color: #fff; transform: scale(0.93); }
+    #btn-right { grid-area: right; }
+    #btn-back  { grid-area: back; }
+
+    .speed-row {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      width: 100%;
+      max-width: 310px;
+    }
+    .speed-row label { color: var(--muted); font-size: 0.65rem; text-transform: uppercase; white-space: nowrap; }
+    .speed-row input[type=range] { flex: 1; accent-color: var(--accent); }
+    .speed-row span { color: var(--accent); font-weight: bold; min-width: 3ch; text-align: right; }
+
+    /* ---- Status rows ---- */
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      padding: 0.35rem 0;
+      border-bottom: 1px solid var(--border);
+      gap: 0.5rem;
+    }
+    .stat-row:last-child { border-bottom: none; }
+    .stat-label { color: var(--muted); white-space: nowrap; }
+    .stat-value { color: var(--text); text-align: right; word-break: break-all; }
+
+    /* ---- Chips ---- */
+    .chips { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: 0.625rem; }
+    .chip {
+      font-size: 0.6rem;
+      padding: 2px 8px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .chip-ok  { border-color: var(--green); color: var(--green); }
+    .chip-err { border-color: var(--red);   color: var(--red); }
+
+    #last-updated { color: var(--muted); font-size: 0.6rem; margin-top: 0.5rem; }
+
+    /* ---- LIDAR ---- */
+    #lidar-canvas { display: block; border-radius: 4px; width: 100%; max-width: 340px; height: auto; }
+    .lidar-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.75rem;
+    }
+    .lidar-header h2 { margin-bottom: 0; }
+    #lidar-legend {
+      display: flex;
+      gap: 1rem;
+      font-size: 0.68rem;
+      color: var(--muted);
+      margin-top: 0.625rem;
+      flex-wrap: wrap;
+    }
+
+    /* ---- Log ---- */
+    #log-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.5rem;
+    }
+    #log-header h2 { margin-bottom: 0; }
+    #log-clear {
+      font-size: 0.6rem;
+      padding: 4px 10px;
+      background: var(--border);
+      border: 1px solid #3a4555;
+      border-radius: 4px;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    #log-entries {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 0.72rem;
+    }
+    .log-entry {
+      display: flex;
+      gap: 0.5rem;
+      padding: 4px 0;
+      border-bottom: 1px solid var(--border);
+      align-items: baseline;
+    }
+    .log-entry:last-child { border-bottom: none; }
+    .log-ts    { color: var(--muted); white-space: nowrap; flex-shrink: 0; font-size: 0.65rem; }
+    .log-badge {
+      font-size: 0.58rem;
+      padding: 1px 5px;
+      border-radius: 8px;
+      flex-shrink: 0;
+      font-weight: bold;
+    }
+    .log-stt  { background: #1a2e4a; color: #6ab4ff; border: 1px solid #2a4a6a; }
+    .log-tts  { background: #1a3a1a; color: var(--green); border: 1px solid #2a5a2a; }
+    .log-wake { background: #2a2a1a; color: var(--yellow); border: 1px solid #4a4a1a; }
+    .log-sys  { background: #2a1a2a; color: #c084fc; border: 1px solid #4a2a4a; }
+    .log-text { color: var(--text); word-break: break-word; }
+    #log-status { color: var(--muted); font-size: 0.6rem; }
+  </style>
+  <script src="/mqtt.min.js"></script>
+</head>
+<body>
+
+<header>
+  <h1>O.S.C.A.R.</h1>
+  <div class="hdr-chips">
+    <span class="chip" id="chip-mqtt">MQTT</span>
+    <span class="chip" id="chip-lidar">LIDAR</span>
+  </div>
+</header>
+
+<div class="pages">
+
+  <!-- Drive tab -->
+  <div class="page active" id="page-drive">
+    <div class="card">
+      <img id="camera-feed" src="/video_feed" alt="camera feed">
+    </div>
+    <div class="card drive-area">
+      <h2>Drive</h2>
+      <div class="dpad">
+        <button id="btn-fwd"   data-dir="forward">&#9650;</button>
+        <button id="btn-left"  data-dir="left">&#9664;</button>
+        <button id="btn-stop"  data-dir="stop">&#9632;</button>
+        <button id="btn-right" data-dir="right">&#9654;</button>
+        <button id="btn-back"  data-dir="backward">&#9660;</button>
+      </div>
+      <div class="speed-row">
+        <label>Speed</label>
+        <input type="range" id="speed-slider" min="10" max="100" value="60">
+        <span id="speed-val">60%</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- LIDAR tab -->
+  <div class="page" id="page-lidar">
+    <div class="card">
+      <div class="lidar-header">
+        <h2>LIDAR</h2>
+        <span id="lidar-closest" style="font-size:0.7rem; color:var(--accent);">—</span>
+      </div>
+      <canvas id="lidar-canvas" width="340" height="340"></canvas>
+      <div id="lidar-legend">
+        <span><span style="color:var(--red);">●</span> &lt;0.6 m</span>
+        <span><span style="color:var(--yellow);">●</span> 0.6–1.5 m</span>
+        <span><span style="color:var(--accent);">●</span> &gt;1.5 m</span>
+        <span id="lidar-age" style="margin-left:auto; color:var(--muted);">—</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Status tab -->
+  <div class="page" id="page-status">
+    <div class="card">
+      <h2>System</h2>
+      <div class="stat-row"><span class="stat-label">Hostname</span><span class="stat-value" id="s-host">—</span></div>
+      <div class="stat-row"><span class="stat-label">CPU Temp</span><span class="stat-value" id="s-temp">—</span></div>
+      <div class="stat-row"><span class="stat-label">Load (1m)</span><span class="stat-value" id="s-load">—</span></div>
+      <div class="stat-row"><span class="stat-label">Uptime</span>  <span class="stat-value" id="s-uptime">—</span></div>
+      <div class="stat-row"><span class="stat-label">Disk</span>    <span class="stat-value" id="s-disk">—</span></div>
+      <div class="chips">
+        <span class="chip" id="chip-tts">TTS</span>
+        <span class="chip" id="chip-stt">STT</span>
+      </div>
+      <div id="last-updated">—</div>
+    </div>
+    <div class="card">
+      <h2>Motion</h2>
+      <div class="stat-row"><span class="stat-label">Battery</span>   <span class="stat-value" id="m-batt">—</span></div>
+      <div class="stat-row"><span class="stat-label">M1 Current</span><span class="stat-value" id="m-m1i">—</span></div>
+      <div class="stat-row"><span class="stat-label">M2 Current</span><span class="stat-value" id="m-m2i">—</span></div>
+      <div class="stat-row"><span class="stat-label">M1 Temp</span>   <span class="stat-value" id="m-m1t">—</span></div>
+      <div class="stat-row"><span class="stat-label">M2 Temp</span>   <span class="stat-value" id="m-m2t">—</span></div>
+      <div class="stat-row"><span class="stat-label">Controller</span><span class="stat-value" id="m-status">—</span></div>
+    </div>
+  </div>
+
+  <!-- Log tab -->
+  <div class="page" id="page-log">
+    <div class="card" style="flex:1;">
+      <div id="log-header">
+        <h2>Log</h2>
+        <span id="log-status">connecting…</span>
+        <button id="log-clear" onclick="clearLog()">Clear</button>
+      </div>
+      <div id="log-entries"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Bottom nav -->
+<nav>
+  <button class="tab active" data-page="page-drive" onclick="switchTab(this)">
+    <span class="icon">🕹️</span>Drive
+  </button>
+  <button class="tab" data-page="page-lidar" onclick="switchTab(this)">
+    <span class="icon">📡</span>LIDAR
+  </button>
+  <button class="tab" data-page="page-status" onclick="switchTab(this)">
+    <span class="icon">📊</span>Status
+  </button>
+  <button class="tab" data-page="page-log" onclick="switchTab(this)">
+    <span class="icon">💬</span>Log
+  </button>
+</nav>
+
+<script>
+// ---- Tab switching ----
+function switchTab(btn) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(btn.dataset.page).classList.add('active');
+}
+
+// ---- Helpers ----
+function fmtUptime(secs) {
+  if (secs == null) return '—';
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  return h + 'h ' + m + 'm';
+}
+function fmtBytes(b) {
+  if (b == null) return '—';
+  return (b / (1024 ** 3)).toFixed(1) + ' GB';
+}
+
+// ---- System status polling ----
+async function pollStatus() {
+  try {
+    const r = await fetch('/status');
+    if (!r.ok) return;
+    const d = await r.json();
+
+    document.getElementById('s-host').textContent = d.hostname || '—';
+
+    const temp = d.cpu_temp_c;
+    const tempEl = document.getElementById('s-temp');
+    tempEl.textContent = temp != null ? temp + '°C' : '—';
+    tempEl.style.color = temp > 75 ? 'var(--red)' : temp > 60 ? 'var(--yellow)' : 'var(--green)';
+
+    document.getElementById('s-load').textContent   = d.loadavg_1m != null ? d.loadavg_1m.toFixed(2) : '—';
+    document.getElementById('s-uptime').textContent = fmtUptime(d.uptime_seconds);
+
+    const disk = d.disk_root;
+    if (disk) {
+      const pct = disk.used_percent;
+      const diskEl = document.getElementById('s-disk');
+      diskEl.textContent = fmtBytes(disk.used_bytes) + ' / ' + fmtBytes(disk.total_bytes) + ' (' + pct + '%)';
+      diskEl.style.color = pct > 90 ? 'var(--red)' : pct > 75 ? 'var(--yellow)' : '';
+    }
+
+    const v = d.voice || {};
+    function setChip(id, ok) {
+      const el = document.getElementById(id);
+      el.className = 'chip ' + (ok ? 'chip-ok' : 'chip-err');
+    }
+    setChip('chip-mqtt', v.mqtt_ok);
+    setChip('chip-tts',  v.tts_ok);
+    setChip('chip-stt',  v.stt_ok);
+
+    document.getElementById('last-updated').textContent =
+      'Updated ' + new Date().toLocaleTimeString();
+  } catch (e) {}
+}
+pollStatus();
+setInterval(pollStatus, 5000);
+
+// ---- Motion status polling ----
+async function pollMotion() {
+  try {
+    const r = await fetch('/status_motion');
+    const d = await r.json();
+
+    function fmtV(v) { return v != null ? v.toFixed(1) + ' V' : '—'; }
+    function fmtA(a) { return a != null ? a.toFixed(2) + ' A' : '—'; }
+    function fmtC(c) { return c != null ? c.toFixed(1) + '°C' : '—'; }
+
+    if (!d.available) {
+      ['m-batt','m-m1i','m-m2i','m-m1t','m-m2t'].forEach(
+        id => document.getElementById(id).textContent = 'no data'
+      );
+      return;
+    }
+
+    const battEl = document.getElementById('m-batt');
+    battEl.textContent = fmtV(d.main_battery_v);
+    battEl.style.color = d.main_battery_v != null && d.main_battery_v < 22
+      ? 'var(--red)' : d.main_battery_v != null && d.main_battery_v < 24
+      ? 'var(--yellow)' : '';
+
+    document.getElementById('m-m1i').textContent = fmtA(d.m1_current_a);
+    document.getElementById('m-m2i').textContent = fmtA(d.m2_current_a);
+    document.getElementById('m-m1t').textContent = fmtC(d.m1_temp_c);
+    document.getElementById('m-m2t').textContent = fmtC(d.m2_temp_c);
+
+    const CRIT_BITS = { 0x01: 'E-Stop', 0x02: 'Over Temp', 0x08: 'Batt High', 0x20: 'Logic Low' };
+    const statusEl = document.getElementById('m-status');
+    if (d.error_bits == null) {
+      statusEl.textContent = '—';
+      statusEl.style.color = '';
+    } else {
+      const errors = Object.entries(CRIT_BITS)
+        .filter(([mask]) => d.error_bits & Number(mask))
+        .map(([, name]) => name);
+      if (errors.length === 0) {
+        statusEl.textContent = 'OK';
+        statusEl.style.color = 'var(--green)';
+      } else {
+        statusEl.textContent = errors.join(', ');
+        statusEl.style.color = 'var(--red)';
+      }
+    }
+  } catch (e) {}
+}
+pollMotion();
+setInterval(pollMotion, 2000);
+
+// ---- Drive controls ----
+const speedSlider = document.getElementById('speed-slider');
+const speedVal    = document.getElementById('speed-val');
+speedSlider.addEventListener('input', () => {
+  speedVal.textContent = speedSlider.value + '%';
+});
+
+let driveInterval = null;
+let activeDir = null;
+let activeBtn = null;
+
+async function sendCommand(direction) {
+  const speed = parseInt(speedSlider.value) / 100;
+  try {
+    await fetch('/command', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        intent:    direction === 'stop' ? 'stop' : 'move',
+        direction: direction,
+        speed:     direction === 'stop' ? 0.0 : speed,
+        duration:  0.4
+      })
+    });
+  } catch (e) {}
+}
+
+function startDrive(dir, btn) {
+  if (activeDir === dir) return;
+  stopDrive();
+  activeDir = dir;
+  activeBtn = btn;
+  if (btn) btn.classList.add('active');
+  sendCommand(dir);
+  if (dir !== 'stop') {
+    driveInterval = setInterval(() => sendCommand(dir), 300);
+  }
+}
+
+function stopDrive() {
+  if (driveInterval) { clearInterval(driveInterval); driveInterval = null; }
+  if (activeBtn) activeBtn.classList.remove('active');
+  activeDir = null;
+  activeBtn = null;
+}
+
+document.querySelectorAll('.dpad button').forEach(btn => {
+  const dir = btn.dataset.dir;
+  btn.addEventListener('touchstart', e => { e.preventDefault(); startDrive(dir, btn); }, { passive: false });
+  btn.addEventListener('mousedown',  e => { e.preventDefault(); startDrive(dir, btn); });
+  if (dir !== 'stop') {
+    btn.addEventListener('touchend',   () => { stopDrive(); sendCommand('stop'); });
+    btn.addEventListener('mouseup',    () => { stopDrive(); sendCommand('stop'); });
+    btn.addEventListener('mouseleave', () => { if (activeDir === dir) { stopDrive(); sendCommand('stop'); } });
+  }
+});
+
+document.addEventListener('mouseup', () => {
+  if (activeDir && activeDir !== 'stop') { stopDrive(); sendCommand('stop'); }
+});
+
+// ---- Conversation / event log (SSE) ----
+const logEntries  = document.getElementById('log-entries');
+const logStatus   = document.getElementById('log-status');
+const BADGE_LABEL = { stt: 'HEARD', tts: 'SAID', wake: 'WAKE', sys: 'SYS' };
+
+function appendLogEntry(entry) {
+  const source = entry.source || 'sys';
+  const label  = BADGE_LABEL[source] || source.toUpperCase();
+  const ts     = new Date(entry.ts).toLocaleTimeString();
+  const row = document.createElement('div');
+  row.className = 'log-entry';
+  row.innerHTML =
+    `<span class="log-ts">${ts}</span>` +
+    `<span class="log-badge log-${source}">${label}</span>` +
+    `<span class="log-text">${entry.text}</span>`;
+  logEntries.insertBefore(row, logEntries.firstChild); // newest first on mobile
+  while (logEntries.children.length > 100) logEntries.removeChild(logEntries.lastChild);
+}
+
+function clearLog() { logEntries.innerHTML = ''; }
+
+(function connectSSE() {
+  const es = new EventSource('/events');
+  es.onopen  = () => { logStatus.textContent = 'live'; logStatus.style.color = 'var(--green)'; };
+  es.onmessage = e => { try { appendLogEntry(JSON.parse(e.data)); } catch (_) {} };
+  es.onerror = () => {
+    logStatus.textContent = 'reconnecting…';
+    logStatus.style.color = 'var(--yellow)';
+    es.close();
+    setTimeout(connectSSE, 3000);
+  };
+})();
+
+// ---- LIDAR ----
+(function () {
+  const canvas = document.getElementById('lidar-canvas');
+  const ctx    = canvas.getContext('2d');
+  const W = 340, H = 340;
+  canvas.width = W; canvas.height = H;
+  const MAX_MM = 6000;
+  const RINGS  = [1000, 2000, 3000, 4000, 5000];
+
+  function ptColor(d) {
+    if (d < 600)  return '#ff5252';
+    if (d < 1500) return '#ffc947';
+    return '#4a9eff';
+  }
+
+  function drawScan(data) {
+    const cx = W / 2, cy = H / 2;
+    const R  = Math.min(W, H) / 2 - 22;
+
+    ctx.fillStyle = '#0e1117';
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.lineWidth = 1;
+    for (const mm of RINGS) {
+      const r = (mm / MAX_MM) * R;
+      ctx.strokeStyle = '#1e2a3a';
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = '#2a3a55';
+      ctx.font = '9px monospace';
+      ctx.fillText(mm / 1000 + 'm', cx + r + 3, cy - 2);
+    }
+
+    ctx.strokeStyle = '#1e2a3a';
+    ctx.setLineDash([3, 5]);
+    ctx.beginPath(); ctx.moveTo(cx, cy - R); ctx.lineTo(cx, cy + R); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx - R, cy); ctx.lineTo(cx + R, cy); ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = '#3a4a66';
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('F', cx, cy - R + 11);
+    ctx.fillText('B', cx, cy + R - 2);
+    ctx.textAlign = 'left';
+    ctx.fillText('L', cx - R + 2, cy + 4);
+    ctx.textAlign = 'right';
+    ctx.fillText('R', cx + R - 2, cy + 4);
+    ctx.textAlign = 'left';
+
+    let minDist = Infinity;
+    for (const pt of data.pts) {
+      if (!pt.d || pt.d <= 0) continue;
+      const r   = Math.min((pt.d / MAX_MM) * R, R);
+      const rad = (pt.a * Math.PI) / 180;
+      const x   = cx + r * Math.sin(rad);
+      const y   = cy - r * Math.cos(rad);
+      ctx.fillStyle = ptColor(pt.d);
+      ctx.beginPath(); ctx.arc(x, y, 2.5, 0, Math.PI * 2); ctx.fill();
+      if (pt.d < minDist) minDist = pt.d;
+    }
+
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(cx, cy, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#0e1117';
+    ctx.beginPath(); ctx.arc(cx, cy, 2.5, 0, Math.PI * 2); ctx.fill();
+
+    const el = document.getElementById('lidar-closest');
+    if (minDist < Infinity) {
+      el.textContent = 'nearest ' + (minDist / 1000).toFixed(2) + ' m';
+      el.style.color = minDist < 600 ? 'var(--red)' : minDist < 1500 ? 'var(--yellow)' : 'var(--accent)';
+    }
+    document.getElementById('lidar-age').textContent = new Date().toLocaleTimeString();
+  }
+
+  drawScan({ pts: [] });
+
+  if (typeof mqtt === 'undefined') return;
+
+  const client = mqtt.connect('wss://' + location.host + '/mqtt', {
+    clientId:        'oscar_mob_' + Math.random().toString(16).slice(2, 8),
+    reconnectPeriod: 3000,
+    keepalive:       30,
+  });
+
+  client.on('connect', () => {
+    client.subscribe('robot/lidar/scan');
+    client.subscribe('robot/lidar/health');
+    document.getElementById('chip-lidar').className   = 'chip chip-ok';
+    document.getElementById('chip-lidar').textContent = 'LIDAR';
+  });
+
+  client.on('message', (topic, payload) => {
+    try {
+      const data = JSON.parse(payload.toString());
+      if (topic === 'robot/lidar/scan') {
+        drawScan(data);
+      } else if (topic === 'robot/lidar/health') {
+        const ok = data.status === 'Good' || data.status === 'online';
+        const chip = document.getElementById('chip-lidar');
+        chip.className   = 'chip ' + (ok ? 'chip-ok' : 'chip-err');
+        chip.textContent = ok ? 'LIDAR' : (data.status || 'error');
+      }
+    } catch (_) {}
+  });
+
+  client.on('error',      () => { document.getElementById('chip-lidar').className = 'chip chip-err'; document.getElementById('chip-lidar').textContent = 'error'; });
+  client.on('disconnect', () => { document.getElementById('chip-lidar').className = 'chip chip-err'; document.getElementById('chip-lidar').textContent = 'offline'; });
+})();
+</script>
+</body>
+</html>
