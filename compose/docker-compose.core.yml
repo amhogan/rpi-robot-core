@@ -29,6 +29,7 @@ services:
   dashboard:
     image: nginx:1.27-alpine
     ports:
+      - "80:80"
       - "443:443"
     container_name: robot-dashboard
     restart: unless-stopped
