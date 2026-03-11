@@ -7,3 +7,10 @@
   - Manual drive controls hitting motion_status `/command`.
   - System status via netstatus `/status` (host + voice stack).
   - RoboClaw & battery status via motion_status `/status_motion`.
+
+## RC Input (Pending)
+- RC Input — host setup: enable pigpiod on Pi (`sudo systemctl enable pigpiod && sudo systemctl start pigpiod`).
+- RC Input — add `rc_input` service block to `docker/docker-compose.yml` (see `services/rc_input/TASKS.md`).
+- RC Input — calibrate PWM min/center/max values for the FS-i6 transmitter and update compose env vars.
+- RC Input — integrate RC override into motor control container (subscribe to `oscar/control/mode` and `oscar/control/rc`).
+- RC Input — end-to-end test procedure (see `services/rc_input/TASKS.md` §5).
