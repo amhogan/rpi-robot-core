@@ -1,2 +1,2 @@
-pigpio==1.78
+lgpio==0.2.2.0
 paho-mqtt==1.6.1

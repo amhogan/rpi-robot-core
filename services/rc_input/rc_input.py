@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-OSCAR rc_input service
-Reads PWM signals from FS-iA6 receiver via pigpio and publishes
-control commands to MQTT topics.
+OSCAR rc_input service — lgpio edition
+Reads PWM signals from FS-iA6 receiver via lgpio (RPi 5 native, no daemon needed)
+and publishes control commands to MQTT.
 
 GPIO Mapping:
   GPIO17 (Pin 11) -> CH1 Steering  (right stick horizontal)
@@ -10,11 +10,11 @@ GPIO Mapping:
   GPIO22 (Pin 15) -> CH5 Override  (SwA switch)
 
 MQTT Topics Published:
-  oscar/control/rc    -> {steering, throttle, timestamp}
+  oscar/control/rc    -> {steering, throttle, ch1_raw, ch2_raw, ch5_raw, timestamp}
   oscar/control/mode  -> "rc" | "auto"
 """
 
-import pigpio
+import lgpio
 import paho.mqtt.client as mqtt
 import json
 import time
@@ -23,32 +23,24 @@ import os
 import signal
 import sys
 
-# ── Configuration ────────────────────────────────────────────────────────────
-GPIO_CH1_STEER    = int(os.getenv("GPIO_CH1", "17"))   # Steering
-GPIO_CH2_THROTTLE = int(os.getenv("GPIO_CH2", "27"))   # Throttle
-GPIO_CH5_OVERRIDE = int(os.getenv("GPIO_CH5", "22"))   # RC Override switch
+# ── Configuration ─────────────────────────────────────────────────────────────
+GPIO_CH1_STEER    = int(os.getenv("GPIO_CH1", "17"))
+GPIO_CH2_THROTTLE = int(os.getenv("GPIO_CH2", "27"))
+GPIO_CH5_OVERRIDE = int(os.getenv("GPIO_CH5", "22"))
 
-MQTT_BROKER   = os.getenv("MQTT_BROKER", "mqtt")
-MQTT_PORT     = int(os.getenv("MQTT_PORT", "1883"))
+MQTT_BROKER     = os.getenv("MQTT_BROKER", "mqtt")
+MQTT_PORT       = int(os.getenv("MQTT_PORT", "1883"))
 MQTT_TOPIC_RC   = os.getenv("MQTT_TOPIC_RC",   "oscar/control/rc")
 MQTT_TOPIC_MODE = os.getenv("MQTT_TOPIC_MODE", "oscar/control/mode")
 
-# PWM pulse width bounds from FS-i6 transmitter (microseconds)
 PWM_MIN    = int(os.getenv("PWM_MIN",    "1000"))
 PWM_CENTER = int(os.getenv("PWM_CENTER", "1500"))
 PWM_MAX    = int(os.getenv("PWM_MAX",    "2000"))
 
-# How long with no valid pulse before we consider signal lost (seconds)
-SIGNAL_TIMEOUT = float(os.getenv("SIGNAL_TIMEOUT", "0.5"))
-
-# Publish rate cap (seconds) - don't flood MQTT
-PUBLISH_INTERVAL = float(os.getenv("PUBLISH_INTERVAL", "0.05"))  # 20 Hz
-
-# Override active when CH5 pulse > this threshold
-OVERRIDE_THRESHOLD = int(os.getenv("OVERRIDE_THRESHOLD", "1700"))
-
-# Deadband around center to treat as zero (microseconds)
-DEADBAND = int(os.getenv("DEADBAND", "30"))
+SIGNAL_TIMEOUT     = float(os.getenv("SIGNAL_TIMEOUT",     "0.5"))
+PUBLISH_INTERVAL   = float(os.getenv("PUBLISH_INTERVAL",   "0.05"))   # 20 Hz
+OVERRIDE_THRESHOLD = int(os.getenv("OVERRIDE_THRESHOLD",   "1700"))
+DEADBAND           = int(os.getenv("DEADBAND",             "30"))
 
 logging.basicConfig(
     level=logging.INFO,
@@ -59,25 +51,29 @@ log = logging.getLogger(__name__)
 
 # ── PWM Reader ────────────────────────────────────────────────────────────────
 class PWMReader:
-    """Reads a single PWM channel using pigpio edge callbacks."""
+    """
+    Measures PWM pulse width on a GPIO pin using lgpio edge alerts.
+    lgpio reports timestamps in nanoseconds.
+    """
 
-    def __init__(self, pi, gpio):
-        self.pi = pi
+    def __init__(self, handle, gpio):
+        self.handle = handle
         self.gpio = gpio
-        self._pulse_width = PWM_CENTER  # default to center
-        self._last_tick = None
+        self._pulse_width = PWM_CENTER
+        self._rise_ns = None
         self._last_seen = 0.0
-        self._cb = pi.callback(gpio, pigpio.EITHER_EDGE, self._edge)
 
-    def _edge(self, gpio, level, tick):
+        # Set as input, no pull (external signal drives it)
+        lgpio.gpio_claim_alert(handle, gpio, lgpio.BOTH_EDGES)
+        lgpio.callback(handle, gpio, lgpio.BOTH_EDGES, self._edge)
+
+    def _edge(self, chip, gpio, level, timestamp_ns):
         if level == 1:
-            # Rising edge — record start tick
-            self._last_tick = tick
-        elif level == 0 and self._last_tick is not None:
-            # Falling edge — calculate pulse width
-            pw = pigpio.tickDiff(self._last_tick, tick)
-            if PWM_MIN - 100 <= pw <= PWM_MAX + 100:   # sanity check
-                self._pulse_width = pw
+            self._rise_ns = timestamp_ns
+        elif level == 0 and self._rise_ns is not None:
+            pw_us = (timestamp_ns - self._rise_ns) / 1000  # ns → µs
+            if PWM_MIN - 100 <= pw_us <= PWM_MAX + 100:
+                self._pulse_width = int(pw_us)
                 self._last_seen = time.monotonic()
 
     @property
@@ -88,30 +84,22 @@ class PWMReader:
     def is_alive(self):
         return (time.monotonic() - self._last_seen) < SIGNAL_TIMEOUT
 
-    def cancel(self):
-        self._cb.cancel()
 
-
-def normalize(pw, deadband=DEADBAND):
-    """Map pulse width to [-1.0, +1.0], with center deadband."""
-    center = PWM_CENTER
-    if abs(pw - center) <= deadband:
+def normalize(pw):
+    """Map pulse width to [-1.0, +1.0] with center deadband."""
+    if abs(pw - PWM_CENTER) <= DEADBAND:
         return 0.0
-    if pw < center:
-        return (pw - center) / float(center - PWM_MIN)
+    if pw < PWM_CENTER:
+        return (pw - PWM_CENTER) / float(PWM_CENTER - PWM_MIN)
     else:
-        return (pw - center) / float(PWM_MAX - center)
+        return (pw - PWM_CENTER) / float(PWM_MAX - PWM_CENTER)
 
 
 # ── MQTT ──────────────────────────────────────────────────────────────────────
 def build_mqtt_client():
     client = mqtt.Client(client_id="rc_input", clean_session=True)
-    client.on_connect = lambda c, u, f, rc: log.info(
-        f"MQTT connected (rc={rc})"
-    )
-    client.on_disconnect = lambda c, u, rc: log.warning(
-        f"MQTT disconnected (rc={rc}), will retry"
-    )
+    client.on_connect = lambda c, u, f, rc: log.info(f"MQTT connected (rc={rc})")
+    client.on_disconnect = lambda c, u, rc: log.warning(f"MQTT disconnected (rc={rc})")
     return client
 
 
@@ -128,27 +116,17 @@ def mqtt_connect(client):
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 def main():
-    log.info("Starting rc_input service")
+    log.info("Starting rc_input service (lgpio)")
     log.info(f"  GPIO CH1={GPIO_CH1_STEER}, CH2={GPIO_CH2_THROTTLE}, CH5={GPIO_CH5_OVERRIDE}")
     log.info(f"  MQTT {MQTT_BROKER}:{MQTT_PORT}")
 
-    # Connect to pigpiod daemon
-    pi = pigpio.pi()
-    if not pi.connected:
-        log.error("Cannot connect to pigpiod — is the daemon running?")
-        sys.exit(1)
+    # Open GPIO chip (chip 0 on RPi 5)
+    handle = lgpio.gpiochip_open(0)
 
-    # Set GPIO as inputs
-    for gpio in (GPIO_CH1_STEER, GPIO_CH2_THROTTLE, GPIO_CH5_OVERRIDE):
-        pi.set_mode(gpio, pigpio.INPUT)
-        pi.set_pull_up_down(gpio, pigpio.PUD_DOWN)
+    ch1 = PWMReader(handle, GPIO_CH1_STEER)
+    ch2 = PWMReader(handle, GPIO_CH2_THROTTLE)
+    ch5 = PWMReader(handle, GPIO_CH5_OVERRIDE)
 
-    # Set up PWM readers
-    ch1 = PWMReader(pi, GPIO_CH1_STEER)
-    ch2 = PWMReader(pi, GPIO_CH2_THROTTLE)
-    ch5 = PWMReader(pi, GPIO_CH5_OVERRIDE)
-
-    # Connect MQTT
     mqtt_client = build_mqtt_client()
     mqtt_connect(mqtt_client)
 
@@ -163,10 +141,7 @@ def main():
 
     def shutdown(sig, frame):
         log.info("Shutting down rc_input")
-        ch1.cancel()
-        ch2.cancel()
-        ch5.cancel()
-        pi.stop()
+        lgpio.gpiochip_close(handle)
         publish_mode("auto")
         mqtt_client.loop_stop()
         mqtt_client.disconnect()
@@ -176,38 +151,27 @@ def main():
     signal.signal(signal.SIGINT, shutdown)
 
     last_publish = 0.0
-
     log.info("rc_input running — waiting for RC signal...")
 
     while True:
         now = time.monotonic()
-
         signal_present = ch1.is_alive and ch2.is_alive
-
-        # Determine mode from CH5 override switch
-        override_active = (
-            signal_present and ch5.pulse_width > OVERRIDE_THRESHOLD
-        )
+        override_active = signal_present and ch5.pulse_width > OVERRIDE_THRESHOLD
 
         if override_active:
             publish_mode("rc")
         else:
             publish_mode("auto")
 
-        # Publish RC commands at rate cap
         if signal_present and override_active and (now - last_publish) >= PUBLISH_INTERVAL:
-            steering = normalize(ch1.pulse_width)
-            throttle = normalize(ch2.pulse_width)
-
             payload = json.dumps({
-                "steering":  round(steering, 3),
-                "throttle":  round(throttle, 3),
+                "steering":  round(normalize(ch1.pulse_width), 3),
+                "throttle":  round(normalize(ch2.pulse_width), 3),
                 "ch1_raw":   ch1.pulse_width,
                 "ch2_raw":   ch2.pulse_width,
                 "ch5_raw":   ch5.pulse_width,
                 "timestamp": time.time()
             })
-
             mqtt_client.publish(MQTT_TOPIC_RC, payload, qos=0)
             last_publish = now
 
